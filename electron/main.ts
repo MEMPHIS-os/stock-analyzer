@@ -30,6 +30,7 @@ async function createWindow() {
 
   console.log('  Static dir:', distPath);
   console.log('  Packaged:', app.isPackaged);
+  console.log('  Version:', app.getVersion());
 
   // Start server (also pre-warms Yahoo auth in background)
   const port = await startServer(distPath, 0); // port 0 = random available port
@@ -79,7 +80,7 @@ async function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Native desktop notifications
+  // ─── Native desktop notifications ───
   ipcMain.on('show-notification', (_event, { title, body }: { title: string; body: string }) => {
     if (Notification.isSupported()) {
       const notification = new Notification({
@@ -96,29 +97,128 @@ async function createWindow() {
     }
   });
 
-  // Auto-update (only in packaged mode)
+  // ─── App version request ───
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
+  // ─── Auto-Update (only in packaged mode) ───
   if (app.isPackaged) {
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-
-    autoUpdater.on('update-available', (info) => {
-      mainWindow?.webContents.send('update-available', { version: info.version });
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-      mainWindow?.webContents.send('update-downloaded', { version: info.version });
-    });
-
-    ipcMain.on('install-update', () => {
-      autoUpdater.quitAndInstall();
-    });
-
-    autoUpdater.checkForUpdates().catch(() => {});
+    setupAutoUpdater();
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function setupAutoUpdater() {
+  // Configure
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+
+  // Logging
+  autoUpdater.logger = {
+    info: (msg: any) => console.log('[AutoUpdater]', msg),
+    warn: (msg: any) => console.warn('[AutoUpdater]', msg),
+    error: (msg: any) => console.error('[AutoUpdater]', msg),
+    debug: (msg: any) => console.log('[AutoUpdater:debug]', msg),
+  } as any;
+
+  // ─── Events ───
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...');
+    mainWindow?.webContents.send('update-checking');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version);
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+      releaseDate: info.releaseDate,
+    });
+
+    // Show native notification
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'Update verfügbar',
+        body: `StockAnalyzer v${info.version} wird heruntergeladen...`,
+        icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+      });
+      notification.show();
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[AutoUpdater] No update available.');
+    mainWindow?.webContents.send('update-not-available');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[AutoUpdater] Download: ${progress.percent.toFixed(1)}%`);
+    mainWindow?.webContents.send('update-download-progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version);
+    mainWindow?.webContents.send('update-downloaded', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+
+    // Show native notification
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'Update bereit',
+        body: `StockAnalyzer v${info.version} ist bereit zur Installation. Beim nächsten Neustart wird aktualisiert.`,
+        icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+      });
+      notification.on('click', () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+      });
+      notification.show();
+    }
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err.message);
+    mainWindow?.webContents.send('update-error', { message: err.message });
+  });
+
+  // ─── IPC handlers ───
+
+  ipcMain.on('install-update', () => {
+    console.log('[AutoUpdater] User requested install, quitting and installing...');
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.on('check-for-updates', () => {
+    console.log('[AutoUpdater] Manual update check requested.');
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[AutoUpdater] Manual check failed:', err.message);
+    });
+  });
+
+  // ─── Initial check + periodic checks ───
+
+  // Check after 5 seconds (give app time to start)
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 5000);
+
+  // Re-check every 4 hours
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
 }
 
 app.whenReady().then(createWindow);
