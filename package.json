@@ -1,0 +1,48 @@
+{
+  "name": "stock-analyzer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"tsx watch server.ts\" \"vite\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch server.ts",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "electron:build": "vite build && node node_modules/esbuild/bin/esbuild electron/main.ts --bundle --platform=node --external:electron --format=cjs --outfile=dist-electron/main.cjs && node node_modules/esbuild/bin/esbuild electron/preload.ts --bundle --platform=node --external:electron --format=cjs --outfile=dist-electron/preload.cjs && node -e \"require('fs').copyFileSync('electron/splash.html','dist-electron/splash.html')\"",
+    "electron:dev": "npm run electron:build && electron .",
+    "electron:pack": "npm run electron:build && electron-builder --config electron-builder.config.json"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "date-fns": "^3.6.0",
+    "electron-updater": "^6.8.3",
+    "express": "^4.21.0",
+    "lightweight-charts": "^4.2.1",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "yahoo-finance2": "^2.11.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0",
+    "esbuild": "^0.24.0",
+    "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

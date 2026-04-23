@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+.claude/
+*.7z
+Usersex0cr*

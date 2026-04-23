@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#131722"/>
+      <stop offset="100%" stop-color="#1e222d"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2962ff"/>
+      <stop offset="100%" stop-color="#5b8def"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2962ff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#2962ff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Area fill under the line -->
+  <path d="M40 180 L75 155 L110 165 L145 120 L180 90 L215 60 L215 200 L40 200 Z" fill="url(#glow)"/>
+  <!-- Chart line -->
+  <polyline points="40,180 75,155 110,165 145,120 180,90 215,60" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Endpoint dot -->
+  <circle cx="215" cy="60" r="8" fill="#2962ff"/>
+  <circle cx="215" cy="60" r="4" fill="#ffffff"/>
+  <!-- Bar chart elements at bottom -->
+  <rect x="52" y="200" width="14" height="20" rx="2" fill="#26a69a" opacity="0.6"/>
+  <rect x="76" y="196" width="14" height="24" rx="2" fill="#26a69a" opacity="0.7"/>
+  <rect x="100" y="202" width="14" height="18" rx="2" fill="#ef5350" opacity="0.6"/>
+  <rect x="124" y="192" width="14" height="28" rx="2" fill="#26a69a" opacity="0.8"/>
+  <rect x="148" y="188" width="14" height="32" rx="2" fill="#26a69a" opacity="0.8"/>
+  <rect x="172" y="184" width="14" height="36" rx="2" fill="#26a69a" opacity="0.9"/>
+  <rect x="196" y="180" width="14" height="40" rx="2" fill="#26a69a"/>
+</svg>

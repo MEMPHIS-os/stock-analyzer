@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(135deg, #0f1117, #131722);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      color: #d1d4dc;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+    }
+    .logo-text {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-text span {
+      color: #2962ff;
+    }
+    .loader {
+      width: 200px;
+      height: 3px;
+      background: rgba(41, 98, 255, 0.15);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .loader-bar {
+      height: 100%;
+      width: 40%;
+      background: linear-gradient(90deg, #2962ff, #5b8def);
+      border-radius: 3px;
+      animation: loading 1.2s ease-in-out infinite;
+    }
+    @keyframes loading {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+    .status {
+      font-size: 12px;
+      color: #787b86;
+    }
+    .version {
+      position: absolute;
+      bottom: 16px;
+      font-size: 10px;
+      color: #4c525e;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <svg class="logo-icon" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#131722"/>
+          <stop offset="100%" stop-color="#1e222d"/>
+        </linearGradient>
+        <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#2962ff"/>
+          <stop offset="100%" stop-color="#5b8def"/>
+        </linearGradient>
+      </defs>
+      <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+      <path d="M40 180 L75 155 L110 165 L145 120 L180 90 L215 60 L215 200 L40 200 Z" fill="rgba(41,98,255,0.15)"/>
+      <polyline points="40,180 75,155 110,165 145,120 180,90 215,60" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="215" cy="60" r="8" fill="#2962ff"/>
+      <circle cx="215" cy="60" r="4" fill="#ffffff"/>
+    </svg>
+    <div class="logo-text">Stock<span>Analyzer</span></div>
+  </div>
+  <div class="loader">
+    <div class="loader-bar"></div>
+  </div>
+  <div class="status">Server wird gestartet...</div>
+  <div class="version">v1.0.0</div>
+</body>
+</html>

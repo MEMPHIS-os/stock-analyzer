@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.stockanalyzer.app",
+  "productName": "StockAnalyzer",
+  "asar": false,
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "!dist/win-unpacked",
+    "!dist/builder-debug.yml",
+    "!dist/*.exe"
+  ],
+  "win": {
+    "target": "portable",
+    "icon": "build/icon.ico",
+    "signAndEditExecutable": false
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "OWNER",
+    "repo": "stock-analyzer"
+  }
+}
