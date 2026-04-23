@@ -2,6 +2,8 @@
   "name": "stock-analyzer",
   "private": true,
   "version": "1.0.0",
+  "description": "Professional stock market analyzer with real-time data, charts, and portfolio tracking",
+  "author": "MEMPHIS-os",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -12,7 +14,12 @@
     "preview": "vite preview",
     "electron:build": "vite build && node node_modules/esbuild/bin/esbuild electron/main.ts --bundle --platform=node --external:electron --format=cjs --outfile=dist-electron/main.cjs && node node_modules/esbuild/bin/esbuild electron/preload.ts --bundle --platform=node --external:electron --format=cjs --outfile=dist-electron/preload.cjs && node -e \"require('fs').copyFileSync('electron/splash.html','dist-electron/splash.html')\"",
     "electron:dev": "npm run electron:build && electron .",
-    "electron:pack": "npm run electron:build && electron-builder --config electron-builder.config.json"
+    "electron:pack": "npm run electron:build && electron-builder --config electron-builder.config.json",
+    "electron:publish": "npm run electron:build && electron-builder --config electron-builder.config.json --publish always",
+    "release": "npm run electron:publish",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "dependencies": {
     "axios": "^1.7.9",

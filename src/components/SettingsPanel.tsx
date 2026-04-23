@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw } from 'lucide-react';
 import { useApp } from '../context';
 
 const SHORTCUTS = [
@@ -19,6 +19,12 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { theme, toggleTheme, locale, setLocale, displayCurrency, toggleDisplayCurrency } = useApp();
   const de = locale === 'de';
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  useEffect(() => {
+    window.electronAPI?.getAppVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -177,6 +183,29 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Version & Updates */}
+          <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--glass-border)' }}>
+            <div className="text-xs text-txt-muted">
+              StockAnalyzer {appVersion ? `v${appVersion}` : ''}
+            </div>
+            {window.electronAPI && (
+              <button
+                onClick={() => {
+                  setCheckingUpdate(true);
+                  window.electronAPI?.checkForUpdates();
+                  setTimeout(() => setCheckingUpdate(false), 3000);
+                }}
+                disabled={checkingUpdate}
+                className="flex items-center gap-1.5 text-xs text-txt-secondary hover:text-accent transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                {checkingUpdate
+                  ? (de ? 'Prüfe...' : 'Checking...')
+                  : (de ? 'Nach Updates suchen' : 'Check for updates')}
+              </button>
+            )}
           </div>
         </div>
       </div>

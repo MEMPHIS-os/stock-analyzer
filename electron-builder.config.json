@@ -14,13 +14,26 @@
     "!dist/*.exe"
   ],
   "win": {
-    "target": "portable",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
     "icon": "build/icon.ico",
     "signAndEditExecutable": false
   },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": false,
+    "deleteAppDataOnUninstall": false,
+    "shortcutName": "StockAnalyzer"
+  },
   "publish": {
     "provider": "github",
-    "owner": "OWNER",
-    "repo": "stock-analyzer"
+    "owner": "MEMPHIS-os",
+    "repo": "stock-analyzer",
+    "releaseType": "release"
   }
 }
