@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   Briefcase,
   SlidersHorizontal,
-  Grid3x3,
+  PiggyBank,
   Menu,
 } from 'lucide-react';
 import { useApp } from '../context';
@@ -22,9 +22,9 @@ export default function MobileNav() {
 
   const navItems: NavItem[] = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
+    { path: '/funds', label: 'Fonds', icon: PiggyBank },
     { path: '/screener', label: 'Screener', icon: SlidersHorizontal },
-    { path: '/heatmap', label: 'Heatmap', icon: Grid3x3 },
+    { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
     {
       path: '__sidebar__',
       label: 'More',

@@ -7,10 +7,13 @@ export interface OHLCVData {
   volume: number;
 }
 
+export type QuoteType = 'EQUITY' | 'ETF' | 'MUTUALFUND' | 'INDEX' | 'CURRENCY' | 'CRYPTOCURRENCY' | 'FUTURE';
+
 export interface QuoteData {
   symbol: string;
   shortName?: string;
   longName?: string;
+  quoteType?: QuoteType;
   regularMarketPrice: number;
   regularMarketChange: number;
   regularMarketChangePercent: number;
@@ -112,6 +115,50 @@ export interface FundamentalsData {
     };
     financialsChart?: {
       yearly?: Array<{ date: number; revenue: number; earnings: number }>;
+    };
+  };
+  // ─── Fund/ETF specific ───
+  fundProfile?: {
+    family?: string;
+    categoryName?: string;
+    legalType?: string;
+    feesExpensesInvestment?: {
+      annualReportExpenseRatio?: number; // TER as decimal (e.g. 0.0007 = 0.07%)
+      netExpRatio?: number;
+      grossExpRatio?: number;
+    };
+  };
+  topHoldings?: {
+    holdings?: Array<{
+      symbol: string;
+      holdingName: string;
+      holdingPercent: number;
+    }>;
+    sectorWeightings?: Array<Record<string, number>>;
+    equityHoldings?: {
+      priceToEarnings?: number;
+      priceToBook?: number;
+      priceToSales?: number;
+      priceToCashflow?: number;
+    };
+    bondHoldings?: {
+      duration?: number;
+      maturity?: number;
+    };
+    stockPosition?: number;
+    bondPosition?: number;
+    cashPosition?: number;
+  };
+  fundPerformance?: {
+    trailingReturns?: {
+      ytd?: number;
+      oneYear?: number;
+      threeYear?: number;
+      fiveYear?: number;
+      tenYear?: number;
+    };
+    annualTotalReturns?: {
+      returns?: Array<{ year: string; annualValue: number }>;
     };
   };
 }
