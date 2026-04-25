@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Search,
+  Compass,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { fetchQuotes, fetchSparklines } from '../api';
@@ -141,6 +142,23 @@ const FUND_CATEGORIES = [
       { symbol: 'EXSG.DE', name: 'iShares STOXX Global Select Dividend 100', terLabel: '0.46%' },
       { symbol: 'TDIV.DE', name: 'VanEck Morningstar Developed Markets Dividend Leaders', terLabel: '0.38%' },
       { symbol: 'IUKD.L', name: 'iShares UK Dividend UCITS ETF', terLabel: '0.40%' },
+    ],
+  },
+  {
+    id: 'managed',
+    label: 'funds.category.managed',
+    icon: Compass,
+    funds: [
+      // Klassische Mischfonds / aktiv gemanagt (über ISIN-Suche bei Yahoo gefunden)
+      { symbol: 'D5VN.MU', name: 'C-QUADRAT ARTS Total Return Bond Fund (AT0000634720)', terLabel: '~1.50%' },
+      { symbol: 'Y9U6.F', name: 'Carmignac Patrimoine (FR0010135103)', terLabel: '~1.71%' },
+      { symbol: '0P0001HO18.F', name: 'Warburg Global ETFs-Strategie Aktiv (DE000A2H89E6)', terLabel: '~1.50%' },
+      // Weitere populäre Mischfonds
+      { symbol: '0P00000F1V.F', name: 'Flossbach von Storch Multiple Opportunities R', terLabel: '~1.62%' },
+      { symbol: '0P00009NPM.F', name: 'DWS Concept Kaldemorgen LD', terLabel: '~1.55%' },
+      { symbol: '0P0000XW6P.F', name: 'Nordea 1 - Stable Return Fund', terLabel: '~1.65%' },
+      { symbol: '0P00000NQM.F', name: 'BlackRock Global Allocation A2 USD', terLabel: '~1.78%' },
+      { symbol: '0P0000IUVT.F', name: 'PIMCO GIS Income Fund', terLabel: '~1.45%' },
     ],
   },
 ];
