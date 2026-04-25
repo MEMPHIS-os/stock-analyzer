@@ -1,7 +1,7 @@
 {
   "name": "stock-analyzer",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Professional stock market analyzer with real-time data, charts, and portfolio tracking",
   "author": "MEMPHIS-os",
   "type": "module",
