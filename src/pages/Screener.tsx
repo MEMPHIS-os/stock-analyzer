@@ -7,8 +7,11 @@ import { formatPercent, formatLargeNumber, formatRatio } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+type AssetType = 'ALL' | 'EQUITY' | 'ETF' | 'MUTUALFUND';
+
 interface Filters {
   sector: string;
+  assetType: AssetType;
   minMarketCap: number; // in billions
   maxPE: number;
   minDividendYield: number;
@@ -18,6 +21,7 @@ interface Filters {
 
 const DEFAULT_FILTERS: Filters = {
   sector: '',
+  assetType: 'ALL',
   minMarketCap: 0,
   maxPE: 9999,
   minDividendYield: 0,
@@ -72,6 +76,7 @@ export default function Screener() {
 
   const filtered = useMemo(() => {
     let result = stocks.filter((s) => {
+      if (filters.assetType !== 'ALL' && (s.quoteType || 'EQUITY') !== filters.assetType) return false;
       if (filters.sector && s.sector !== filters.sector) return false;
       if ((s.marketCap || 0) / 1e9 < filters.minMarketCap) return false;
       if (filters.maxPE < 9999 && (s.pe == null || s.pe > filters.maxPE)) return false;
@@ -185,7 +190,20 @@ export default function Screener() {
           <Filter className="w-4 h-4 text-txt-secondary" />
           <span className="text-sm font-medium text-txt-primary">Filter</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+          <div>
+            <label className="stat-label mb-1 block">Asset-Typ</label>
+            <select
+              value={filters.assetType}
+              onChange={(e) => setFilters({ ...filters, assetType: e.target.value as AssetType })}
+              className="input w-full text-xs"
+            >
+              <option value="ALL">Alle</option>
+              <option value="EQUITY">Aktien</option>
+              <option value="ETF">ETFs</option>
+              <option value="MUTUALFUND">Investmentfonds</option>
+            </select>
+          </div>
           <div>
             <label className="stat-label mb-1 block">Sektor</label>
             <select

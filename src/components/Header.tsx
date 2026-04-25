@@ -17,6 +17,7 @@ import {
   X,
   FlaskConical,
   ChevronDown,
+  PiggyBank,
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import { useApp } from '../context';
@@ -43,6 +44,7 @@ export default function Header() {
   const primaryNav = [
     { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
     { path: '/screener', label: t('nav.screener'), icon: SlidersHorizontal },
+    { path: '/funds', label: t('nav.funds'), icon: PiggyBank },
     { path: '/portfolio', label: t('nav.portfolio'), icon: Briefcase },
     { path: '/global', label: t('nav.globalMarkets'), icon: Globe },
   ];

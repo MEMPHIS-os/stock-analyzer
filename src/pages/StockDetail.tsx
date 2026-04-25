@@ -19,6 +19,7 @@ import {
   ListOrdered,
   ChevronDown,
   Layers,
+  Briefcase,
 } from 'lucide-react';
 import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, getIntervalForRange } from '../api';
 import { useApp } from '../context';
@@ -26,6 +27,7 @@ import StockChart from '../components/StockChart';
 import type { StockChartRef } from '../components/StockChart';
 import StockOverview from '../components/StockOverview';
 import FundamentalsPanel from '../components/FundamentalsPanel';
+import FundPanel from '../components/FundPanel';
 import IndexConstituents from '../components/IndexConstituents';
 import TechnicalSummary from '../components/TechnicalSummary';
 import NewsFeed from '../components/NewsFeed';
@@ -75,13 +77,21 @@ const INDICATORS: { value: IndicatorType; label: string; group: string }[] = [
   { value: 'pivotPoints', label: 'Pivot', group: 'S/R' },
 ];
 
-type TabType = 'fundamentals' | 'constituents' | 'technical' | 'news' | 'earnings' | 'forecast';
+type TabType = 'fundamentals' | 'constituents' | 'technical' | 'news' | 'earnings' | 'forecast' | 'fund';
 
 const TAB_CONFIG_STOCK: { key: TabType; i18nKey: string; icon: typeof Building2 }[] = [
   { key: 'fundamentals', i18nKey: 'detail.tab.fundamentals', icon: Building2 },
   { key: 'technical', i18nKey: 'detail.tab.technical', icon: Activity },
   { key: 'news', i18nKey: 'detail.tab.news', icon: Newspaper },
   { key: 'earnings', i18nKey: 'detail.tab.earnings', icon: CalendarDays },
+  { key: 'forecast', i18nKey: 'detail.tab.forecast', icon: Target },
+];
+
+const TAB_CONFIG_FUND: { key: TabType; i18nKey: string; icon: typeof Building2 }[] = [
+  { key: 'fund', i18nKey: 'detail.tab.fund', icon: Briefcase },
+  { key: 'fundamentals', i18nKey: 'detail.tab.fundamentals', icon: Building2 },
+  { key: 'technical', i18nKey: 'detail.tab.technical', icon: Activity },
+  { key: 'news', i18nKey: 'detail.tab.news', icon: Newspaper },
   { key: 'forecast', i18nKey: 'detail.tab.forecast', icon: Target },
 ];
 
@@ -96,8 +106,9 @@ export default function StockDetail() {
   const { symbol = 'AAPL' } = useParams<{ symbol: string }>();
   const { locale, activeAlerts, t } = useApp();
   const isIndex = symbol.startsWith('^');
-  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : TAB_CONFIG_STOCK;
   const [quote, setQuote] = useState<QuoteData | null>(null);
+  const isFund = !isIndex && (quote?.quoteType === 'ETF' || quote?.quoteType === 'MUTUALFUND');
+  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : isFund ? TAB_CONFIG_FUND : TAB_CONFIG_STOCK;
   const [chartData, setChartData] = useState<OHLCVData[]>([]);
   const [range, setRange] = useState<TimeRange>('1y');
   const [chartType, setChartType] = useState<ChartType>('candlestick');
@@ -613,6 +624,7 @@ export default function StockDetail() {
       {/* Tab content */}
       <div className="pb-8">
         {activeTab === 'constituents' && isIndex && <IndexConstituents indexSymbol={symbol} />}
+        {activeTab === 'fund' && isFund && <FundPanel symbol={symbol} currency={quote?.currency} />}
         {activeTab === 'fundamentals' && !isIndex && <FundamentalsPanel symbol={symbol} currency={quote?.currency} />}
         {activeTab === 'technical' && <TechnicalSummary data={chartData} />}
         {activeTab === 'news' && <NewsFeed symbol={symbol} />}

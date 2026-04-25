@@ -342,12 +342,17 @@ app.get('/api/fundamentals/:symbol', async (req, res) => {
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
+    // Always include both stock and fund modules — Yahoo silently ignores irrelevant ones.
+    // Fund-specific: fundProfile, topHoldings, fundPerformance
     const modules = [
       'summaryDetail',
       'financialData',
       'defaultKeyStatistics',
       'earnings',
       'summaryProfile',
+      'fundProfile',
+      'topHoldings',
+      'fundPerformance',
     ].join(',');
 
     const data = await yahooFetch(
@@ -587,6 +592,10 @@ const SCREENER_UNIVERSE = [
   'MS','C','WFC','AXP','SCHW','CB','CME','ICE',
   'LIN','APD','SHW','ECL','EMR','ITW','ETN','DHR',
   'TMUS','T','CMCSA',
+  // ETFs (so the asset-type filter has something to find)
+  'SPY','VOO','IVV','QQQ','VTI','VEA','VWO','EEM','AGG','BND',
+  'TLT','GLD','SLV','XLK','XLF','XLV','XLE','XLY','XLP','XLI',
+  'XLB','XLRE','XLU','XLC','VYM','SCHD','VGT','SMH','SOXX','ARKK',
 ];
 
 app.get('/api/screener', async (req, res) => {
@@ -620,6 +629,7 @@ app.get('/api/screener', async (req, res) => {
       fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
       currency: q.currency || 'USD',
+      quoteType: q.quoteType || 'EQUITY',
     }));
 
     setCache(cacheKey, result, 120_000);
@@ -719,6 +729,7 @@ app.get('/api/index-constituents/:symbol', async (req, res) => {
       fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
       fiftyTwoWeekLow: q.fiftyTwoWeekLow,
       currency: q.currency || 'USD',
+      quoteType: q.quoteType || 'EQUITY',
     }));
 
     setCache(cacheKey, result, 120_000);

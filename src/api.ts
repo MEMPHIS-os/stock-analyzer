@@ -94,6 +94,7 @@ export interface ScreenerStock {
   fiftyTwoWeekHigh: number;
   fiftyTwoWeekLow: number;
   currency?: string;
+  quoteType?: string;
 }
 
 export async function fetchScreener(): Promise<ScreenerStock[]> {
