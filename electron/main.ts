@@ -117,14 +117,35 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowDowngrade = false;
+  // Disable differential downloads — they can fail with blockmap mismatches
+  // for unsigned builds. Forces full installer download (slightly larger but reliable).
+  (autoUpdater as any).disableDifferentialDownload = true;
 
-  // Logging
+  // Persistent log file for debugging update failures
+  // Saved to %APPDATA%\StockAnalyzer\logs\updater.log
+  const logDir = path.join(process.env.APPDATA || process.env.HOME || '.', 'StockAnalyzer', 'logs');
+  try {
+    require('fs').mkdirSync(logDir, { recursive: true });
+  } catch {}
+  const logFile = path.join(logDir, 'updater.log');
+  const fs = require('fs');
+
+  function writeLog(level: string, msg: any) {
+    const line = `[${new Date().toISOString()}] [${level}] ${typeof msg === 'string' ? msg : JSON.stringify(msg)}\n`;
+    try {
+      fs.appendFileSync(logFile, line);
+    } catch {}
+    console.log(`[AutoUpdater:${level}]`, msg);
+  }
+
   autoUpdater.logger = {
-    info: (msg: any) => console.log('[AutoUpdater]', msg),
-    warn: (msg: any) => console.warn('[AutoUpdater]', msg),
-    error: (msg: any) => console.error('[AutoUpdater]', msg),
-    debug: (msg: any) => console.log('[AutoUpdater:debug]', msg),
+    info: (msg: any) => writeLog('info', msg),
+    warn: (msg: any) => writeLog('warn', msg),
+    error: (msg: any) => writeLog('error', msg),
+    debug: (msg: any) => writeLog('debug', msg),
   } as any;
+
+  writeLog('info', `=== AutoUpdater started, app version ${app.getVersion()} ===`);
 
   // ─── Events ───
 
@@ -190,15 +211,21 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] Error:', err.message);
+    const errorDetails = `${err.message}${err.stack ? `\n${err.stack}` : ''}`;
+    writeLog('error', `Update error: ${errorDetails}`);
     mainWindow?.webContents.send('update-error', { message: err.message });
   });
 
   // ─── IPC handlers ───
 
   ipcMain.on('install-update', () => {
-    console.log('[AutoUpdater] User requested install, quitting and installing...');
-    autoUpdater.quitAndInstall(false, true);
+    writeLog('info', 'User requested install — calling quitAndInstall...');
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (err: any) {
+      writeLog('error', `quitAndInstall failed: ${err.message}`);
+      mainWindow?.webContents.send('update-error', { message: `Install failed: ${err.message}` });
+    }
   });
 
   ipcMain.on('check-for-updates', () => {

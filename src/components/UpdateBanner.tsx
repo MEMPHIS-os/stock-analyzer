@@ -36,6 +36,7 @@ export default function UpdateBanner() {
   const [transferred, setTransferred] = useState(0);
   const [total, setTotal] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -67,10 +68,10 @@ export default function UpdateBanner() {
       setDismissed(false); // Re-show if dismissed
     });
 
-    api.onUpdateError(() => {
+    api.onUpdateError((err) => {
+      setErrorMessage(err?.message || 'Unbekannter Fehler');
       setState('error');
-      // Auto-hide error after 5s
-      setTimeout(() => setState('idle'), 5000);
+      // Errors stay visible until manually dismissed - don't auto-hide
     });
   }, []);
 
@@ -129,17 +130,28 @@ export default function UpdateBanner() {
 
         {state === 'error' && (
           <>
-            <X className="w-4 h-4" />
-            <span>Update-Check fehlgeschlagen</span>
+            <X className="w-4 h-4 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold">Update fehlgeschlagen</span>
+              {errorMessage && (
+                <span className="ml-2 text-white/80 text-xs font-mono break-all">
+                  {errorMessage}
+                </span>
+              )}
+            </div>
             <button
               onClick={() => {
+                setErrorMessage('');
                 window.electronAPI?.checkForUpdates();
                 setState('checking');
               }}
-              className="px-3 py-0.5 bg-white/20 hover:bg-white/30 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+              className="px-3 py-0.5 bg-white/20 hover:bg-white/30 rounded-lg font-medium transition-colors flex items-center gap-1.5 shrink-0"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Erneut versuchen
+            </button>
+            <button onClick={() => setDismissed(true)} className="ml-2 hover:bg-white/20 rounded-lg p-1 transition-colors shrink-0">
+              <X className="w-4 h-4" />
             </button>
           </>
         )}
