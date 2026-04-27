@@ -528,3 +528,167 @@
   0%, 100% { border-color: rgba(41, 98, 255, 0.2); }
   50% { border-color: rgba(41, 98, 255, 0.5); }
 }
+
+/* ─── Split-Flap (Solari board) display ─── */
+.split-flap {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.split-flap-char {
+  position: relative;
+  display: inline-block;
+  width: var(--flap-w, 11px);
+  height: var(--flap-h, 18px);
+  perspective: 90px;
+  border-radius: 2px;
+  background: #0a0a0a;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 2px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.5);
+  font-family: 'Helvetica Neue', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  font-size: var(--flap-fs, 14px);
+  line-height: 1;
+  overflow: hidden;
+  color: #f5f5f0;
+  user-select: none;
+}
+
+/* Separators are slimmer */
+.split-flap-char-sep {
+  width: calc(var(--flap-w, 11px) * 0.55);
+  background: transparent;
+  box-shadow: none;
+}
+
+.split-flap-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+}
+
+.split-flap-top {
+  top: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.85);
+}
+
+.split-flap-bottom {
+  bottom: 0;
+  background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+}
+
+.split-flap-glyph {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font-size: var(--flap-fs, 14px);
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.split-flap-top .split-flap-glyph {
+  top: 0;
+  height: 200%;
+}
+
+.split-flap-bottom .split-flap-glyph {
+  bottom: 0;
+  height: 200%;
+  transform: translateY(-50%);
+}
+
+/* Animated flap halves */
+.split-flap-flap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: linear-gradient(180deg, #1d1d1d 0%, #0c0c0c 100%);
+  z-index: 2;
+}
+
+.split-flap-flap-top {
+  top: 0;
+  transform-origin: 50% 100%;
+  animation: splitFlapTop calc(var(--flip-duration, 380ms) * 0.5) cubic-bezier(0.55, 0, 0.7, 0.4) forwards;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.85);
+}
+
+.split-flap-flap-bottom {
+  bottom: 0;
+  transform-origin: 50% 0%;
+  transform: rotateX(90deg);
+  animation: splitFlapBottom calc(var(--flip-duration, 380ms) * 0.5) cubic-bezier(0.3, 0.6, 0.45, 1) forwards;
+  animation-delay: calc(var(--flip-duration, 380ms) * 0.5);
+  background: linear-gradient(180deg, #0c0c0c 0%, #1d1d1d 100%);
+}
+
+.split-flap-flap-top .split-flap-glyph {
+  top: 0;
+  height: 200%;
+}
+
+.split-flap-flap-bottom .split-flap-glyph {
+  bottom: 0;
+  height: 200%;
+  transform: translateY(-50%);
+}
+
+/* Center hinge (subtle highlight) */
+.split-flap-hinge {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: calc(50% - 0.5px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+  z-index: 3;
+}
+
+@keyframes splitFlapTop {
+  0% { transform: rotateX(0deg); }
+  100% { transform: rotateX(-90deg); }
+}
+
+@keyframes splitFlapBottom {
+  0% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg); }
+}
+
+/* Tone variants — affects glyph color */
+.split-flap-tone-positive .split-flap-glyph { color: #6ee7b7; }
+.split-flap-tone-negative .split-flap-glyph { color: #fca5a5; }
+.split-flap-tone-accent   .split-flap-glyph { color: #93c5fd; }
+.split-flap-tone-neutral  .split-flap-glyph { color: #f0ead6; }
+
+[data-theme="light"] .split-flap-char {
+  background: #18181b;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 2px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-flap-flap-top,
+  .split-flap-flap-bottom {
+    animation-duration: 0.001ms !important;
+  }
+}
