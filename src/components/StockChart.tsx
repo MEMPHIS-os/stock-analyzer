@@ -249,8 +249,9 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       });
     });
 
-    // Alert level lines
+    // Alert level lines (only price-kind alerts have a fixed target line)
     alertLevels.forEach((alert) => {
+      if (alert.kind !== 'price' || alert.targetPrice == null) return;
       priceSeries.createPriceLine({
         price: alert.targetPrice,
         color: alert.condition === 'above' ? '#26a69a' : '#ef5350',

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useAlerts } from './hooks/useAlerts';
-import type { PriceAlert } from './hooks/useAlerts';
+import type { PriceAlert, AddAlertInput } from './hooks/useAlerts';
 import type { WatchlistItem } from './types';
 import { t as translate, type Locale } from './i18n';
 import { fetchExchangeRate } from './api';
@@ -9,6 +9,7 @@ const WATCHLIST_KEY = 'stockanalyzer_watchlist';
 const THEME_KEY = 'stockanalyzer_theme';
 const LOCALE_KEY = 'stockanalyzer_locale';
 const DISPLAY_CURRENCY_KEY = 'stockanalyzer_displaycurrency';
+const SPLIT_FLAP_KEY = 'stockanalyzer_splitflap';
 
 const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', addedAt: Date.now() },
@@ -53,10 +54,16 @@ interface AppState {
   alerts: PriceAlert[];
   activeAlerts: PriceAlert[];
   triggeredAlerts: PriceAlert[];
-  addAlert: (symbol: string, targetPrice: number, condition: 'above' | 'below') => void;
+  addAlert: (input: AddAlertInput) => PriceAlert;
   removeAlert: (id: string) => void;
   clearTriggered: () => void;
-  checkAlerts: (quotes: Record<string, { regularMarketPrice: number }>) => void;
+  checkAlerts: (
+    quotes: Record<
+      string,
+      { regularMarketPrice: number; regularMarketChangePercent?: number; regularMarketVolume?: number; averageVolume?: number }
+    >,
+    locale?: 'de' | 'en'
+  ) => void;
   alertsPanelOpen: boolean;
   setAlertsPanelOpen: (open: boolean) => void;
   settingsPanelOpen: boolean;
@@ -71,6 +78,9 @@ interface AppState {
   /** Convert a price from its native currency to the display currency */
   convertPrice: (price: number, nativeCurrency: string) => { value: number; currency: string; converted: boolean };
   exchangeRate: number | null; // EUR per 1 USD
+  // Split-flap (Solari) display style
+  splitFlapEnabled: boolean;
+  toggleSplitFlap: () => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -107,6 +117,14 @@ function loadDisplayCurrency(): DisplayCurrency {
   return 'EUR'; // Default to EUR for German users
 }
 
+function loadSplitFlap(): boolean {
+  try {
+    const stored = localStorage.getItem(SPLIT_FLAP_KEY);
+    if (stored === 'true' || stored === 'false') return stored === 'true';
+  } catch {}
+  return false;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(loadWatchlist);
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
@@ -119,6 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(loadDisplayCurrency);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [splitFlapEnabled, setSplitFlapEnabled] = useState<boolean>(loadSplitFlap);
 
   // Use alerts hook
   const {
@@ -172,6 +191,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDisplayCurrency((prev) => {
       const next = prev === 'native' ? 'EUR' : 'native';
       localStorage.setItem(DISPLAY_CURRENCY_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const toggleSplitFlap = useCallback(() => {
+    setSplitFlapEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem(SPLIT_FLAP_KEY, String(next));
       return next;
     });
   }, []);
@@ -323,6 +350,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleDisplayCurrency,
         convertPrice,
         exchangeRate,
+        splitFlapEnabled,
+        toggleSplitFlap,
       }}
     >
       {children}

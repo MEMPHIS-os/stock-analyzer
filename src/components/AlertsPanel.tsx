@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Bell, BellRing, X, Plus, Trash2, ArrowUp, ArrowDown, Check } from 'lucide-react';
-import type { PriceAlert } from '../hooks/useAlerts';
+import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign } from 'lucide-react';
+import type { PriceAlert, AddAlertInput, AlertKind } from '../hooks/useAlerts';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
 
@@ -8,7 +8,7 @@ interface AlertsPanelProps {
   alerts: PriceAlert[];
   activeAlerts: PriceAlert[];
   triggeredAlerts: PriceAlert[];
-  onAdd: (symbol: string, targetPrice: number, condition: 'above' | 'below') => void;
+  onAdd: (input: AddAlertInput) => PriceAlert;
   onRemove: (id: string) => void;
   onClearTriggered: () => void;
   onClose: () => void;
@@ -20,6 +20,12 @@ function formatTime(timestamp: number) {
     d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+const KIND_META: Record<AlertKind, { de: string; en: string; icon: typeof DollarSign }> = {
+  price: { de: 'Kurs', en: 'Price', icon: DollarSign },
+  percentChange: { de: '% Tag', en: '% Day', icon: Percent },
+  volumeSpike: { de: 'Volumen', en: 'Volume', icon: BarChart3 },
+};
+
 export default function AlertsPanel({
   activeAlerts,
   triggeredAlerts,
@@ -28,21 +34,65 @@ export default function AlertsPanel({
   onClearTriggered,
   onClose,
 }: AlertsPanelProps) {
-  const { t, showToast } = useApp();
+  const { t, locale, showToast } = useApp();
   const { fp } = usePrice();
+  const de = locale === 'de';
+  const [kind, setKind] = useState<AlertKind>('price');
   const [symbol, setSymbol] = useState('');
-  const [price, setPrice] = useState('');
+  const [value, setValue] = useState('');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const sym = symbol.trim().toUpperCase();
-    const p = parseFloat(price);
-    if (!sym || isNaN(p) || p <= 0) return;
-    onAdd(sym, p, condition);
+    const v = parseFloat(value);
+    if (!sym || isNaN(v) || v <= 0) return;
+
+    if (kind === 'price') {
+      onAdd({ kind: 'price', symbol: sym, targetPrice: v, condition });
+    } else if (kind === 'percentChange') {
+      onAdd({ kind: 'percentChange', symbol: sym, targetPercent: v, condition });
+    } else {
+      onAdd({ kind: 'volumeSpike', symbol: sym, targetMultiplier: v });
+    }
     showToast(t('toast.alertCreated'), 'success');
     setSymbol('');
-    setPrice('');
+    setValue('');
+  }
+
+  function describeAlert(alert: PriceAlert): string {
+    if (alert.kind === 'percentChange') {
+      const dir = alert.condition === 'above' ? '≥' : '≤';
+      return `${de ? 'Tagesänderung' : 'daily change'} ${dir} ${alert.targetPercent}%`;
+    }
+    if (alert.kind === 'volumeSpike') {
+      return `${de ? 'Volumen ≥' : 'volume ≥'} ${alert.targetMultiplier}× ${de ? 'Ø' : 'avg'}`;
+    }
+    return `${alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below')} ${fp(alert.targetPrice ?? 0)}`;
+  }
+
+  function alertIcon(alert: PriceAlert) {
+    if (alert.kind === 'volumeSpike') return <BarChart3 className="w-3.5 h-3.5 text-accent" />;
+    if (alert.kind === 'percentChange') {
+      return alert.condition === 'above'
+        ? <Percent className="w-3.5 h-3.5 text-success" />
+        : <Percent className="w-3.5 h-3.5 text-danger" />;
+    }
+    return alert.condition === 'above'
+      ? <ArrowUp className="w-3.5 h-3.5 text-success" />
+      : <ArrowDown className="w-3.5 h-3.5 text-danger" />;
+  }
+
+  function valueLabel(): string {
+    if (kind === 'price') return de ? 'Kurs' : 'Price';
+    if (kind === 'percentChange') return '%';
+    return de ? 'Faktor (z.B. 2)' : 'Factor (e.g. 2)';
+  }
+
+  function valuePlaceholder(): string {
+    if (kind === 'price') return '150.00';
+    if (kind === 'percentChange') return '5';
+    return '2';
   }
 
   const glassStyle: React.CSSProperties = {
@@ -52,6 +102,8 @@ export default function AlertsPanel({
     border: '1px solid var(--glass-border)',
   };
 
+  const showCondition = kind !== 'volumeSpike';
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center animate-backdrop-in"
@@ -59,7 +111,7 @@ export default function AlertsPanel({
       onClick={onClose}
     >
       <div
-        className="rounded-2xl shadow-depth-lg w-full max-w-lg animate-scale-in max-h-[80vh] flex flex-col overflow-hidden"
+        className="rounded-2xl shadow-depth-lg w-full max-w-lg animate-scale-in max-h-[85vh] flex flex-col overflow-hidden"
         style={glassStyle}
         onClick={(e) => e.stopPropagation()}
       >
@@ -69,10 +121,12 @@ export default function AlertsPanel({
             <div className="p-1.5 rounded-lg bg-accent/10">
               <Bell className="w-5 h-5 text-accent" />
             </div>
-            <h2 className="text-lg font-bold text-txt-primary tracking-tight">Kursalarme</h2>
+            <h2 className="text-lg font-bold text-txt-primary tracking-tight">
+              {de ? 'Kursalarme' : 'Alerts'}
+            </h2>
             {activeAlerts.length > 0 && (
               <span className="text-xs bg-accent/15 text-accent px-2.5 py-0.5 rounded-full font-semibold">
-                {activeAlerts.length} aktiv
+                {activeAlerts.length} {de ? 'aktiv' : 'active'}
               </span>
             )}
           </div>
@@ -85,7 +139,37 @@ export default function AlertsPanel({
         </div>
 
         {/* Add alert form */}
-        <form onSubmit={handleSubmit} className="px-5 py-4 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+        <form onSubmit={handleSubmit} className="px-5 py-4 border-b space-y-3" style={{ borderColor: 'var(--glass-border)' }}>
+          {/* Kind selector */}
+          <div>
+            <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium mb-1.5 block">
+              {de ? 'Alarmtyp' : 'Alert type'}
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(Object.keys(KIND_META) as AlertKind[]).map((k) => {
+                const meta = KIND_META[k];
+                const Icon = meta.icon;
+                const active = kind === k;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-medium transition-all duration-200 ${
+                      active
+                        ? 'bg-accent/15 border-accent/40 text-accent'
+                        : 'border-border/10 text-txt-secondary hover:border-border/30'
+                    }`}
+                    style={!active ? { background: 'var(--glass-bg)' } : {}}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {de ? meta.de : meta.en}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex gap-2 items-end">
             <div className="flex-1">
               <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">Symbol</label>
@@ -97,38 +181,56 @@ export default function AlertsPanel({
                 className="input w-full text-sm mt-1"
               />
             </div>
-            <div className="w-24">
-              <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">Bedingung</label>
-              <select
-                value={condition}
-                onChange={(e) => setCondition(e.target.value as 'above' | 'below')}
-                className="input w-full text-sm mt-1"
-              >
-                <option value="above">Über</option>
-                <option value="below">Unter</option>
-              </select>
-            </div>
+            {showCondition && (
+              <div className="w-24">
+                <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">
+                  {de ? 'Bedingung' : 'Condition'}
+                </label>
+                <select
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value as 'above' | 'below')}
+                  className="input w-full text-sm mt-1"
+                >
+                  <option value="above">{de ? 'Über' : 'Above'}</option>
+                  <option value="below">{de ? 'Unter' : 'Below'}</option>
+                </select>
+              </div>
+            )}
             <div className="flex-1">
-              <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">{t('alerts.price')}</label>
+              <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">
+                {valueLabel()}
+              </label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="150.00"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={valuePlaceholder()}
                 className="input w-full text-sm mt-1"
               />
             </div>
             <button
               type="submit"
               className="btn-primary flex items-center gap-1.5 shrink-0 px-3.5 py-2.5"
-              disabled={!symbol.trim() || !price}
+              disabled={!symbol.trim() || !value}
             >
               <Plus className="w-4 h-4" />
-              Alarm
+              {de ? 'Alarm' : 'Alert'}
             </button>
           </div>
+
+          <p className="text-[10px] text-txt-muted leading-snug">
+            {kind === 'price' && (de
+              ? 'Wird ausgelöst, wenn der Kurs den Schwellwert über- bzw. unterschreitet.'
+              : 'Triggers when the price crosses the threshold.')}
+            {kind === 'percentChange' && (de
+              ? 'Wird ausgelöst, wenn die Tagesveränderung den Schwellwert erreicht (z.B. 5 = ±5% am Tag).'
+              : 'Triggers when daily change crosses the threshold (e.g. 5 = ±5% on the day).')}
+            {kind === 'volumeSpike' && (de
+              ? 'Wird ausgelöst, wenn das aktuelle Volumen das durchschnittliche um den Faktor übersteigt.'
+              : 'Triggers when current volume exceeds the average by the given factor.')}
+          </p>
         </form>
 
         {/* Alert list */}
@@ -136,10 +238,12 @@ export default function AlertsPanel({
           {activeAlerts.length === 0 && triggeredAlerts.length === 0 && (
             <div className="text-center text-sm text-txt-secondary py-10">
               <Bell className="w-10 h-10 text-txt-muted/20 mx-auto mb-3" />
-              Keine Alarme gesetzt.
+              {de ? 'Keine Alarme gesetzt.' : 'No alerts set.'}
               <br />
               <span className="text-txt-muted text-xs mt-1 block">
-                Erstelle einen Alarm um bei Kursänderungen benachrichtigt zu werden.
+                {de
+                  ? 'Erstelle einen Alarm um bei Kursänderungen benachrichtigt zu werden.'
+                  : 'Create an alert to get notified on price changes.'}
               </span>
             </div>
           )}
@@ -148,7 +252,7 @@ export default function AlertsPanel({
           {activeAlerts.length > 0 && (
             <div className="mb-4">
               <h3 className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-2.5">
-                Aktive Alarme ({activeAlerts.length})
+                {de ? 'Aktive Alarme' : 'Active alerts'} ({activeAlerts.length})
               </h3>
               {activeAlerts.map((alert) => (
                 <div
@@ -157,21 +261,14 @@ export default function AlertsPanel({
                   style={{ background: 'rgba(var(--color-bg-700), 0.3)' }}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={`p-1 rounded-lg ${alert.condition === 'above' ? 'bg-success/10' : 'bg-danger/10'}`}>
-                      {alert.condition === 'above' ? (
-                        <ArrowUp className="w-3.5 h-3.5 text-success" />
-                      ) : (
-                        <ArrowDown className="w-3.5 h-3.5 text-danger" />
-                      )}
+                    <div className="p-1 rounded-lg bg-dark-700/30">
+                      {alertIcon(alert)}
                     </div>
                     <span className="font-mono font-bold text-sm text-txt-primary">
                       {alert.symbol}
                     </span>
                     <span className="text-xs text-txt-secondary">
-                      {alert.condition === 'above' ? 'über' : 'unter'}
-                    </span>
-                    <span className="font-mono text-sm text-txt-primary font-medium">
-                      {fp(alert.targetPrice)}
+                      {describeAlert(alert)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -195,13 +292,13 @@ export default function AlertsPanel({
             <div>
               <div className="flex items-center justify-between mb-2.5">
                 <h3 className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-                  Ausgelöst ({triggeredAlerts.length})
+                  {de ? 'Ausgelöst' : 'Triggered'} ({triggeredAlerts.length})
                 </h3>
                 <button
                   onClick={onClearTriggered}
                   className="text-[10px] text-txt-muted hover:text-danger transition-colors"
                 >
-                  Alle löschen
+                  {de ? 'Alle löschen' : 'Clear all'}
                 </button>
               </div>
               {triggeredAlerts.map((alert) => (
@@ -216,11 +313,8 @@ export default function AlertsPanel({
                     <span className="font-mono font-bold text-sm text-success">
                       {alert.symbol}
                     </span>
-                    <span className="text-xs text-txt-secondary">
-                      {alert.condition === 'above' ? 'über' : 'unter'}
-                    </span>
-                    <span className="font-mono text-sm text-txt-secondary line-through">
-                      {fp(alert.targetPrice)}
+                    <span className="text-xs text-txt-secondary line-through">
+                      {describeAlert(alert)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -242,7 +336,9 @@ export default function AlertsPanel({
 
         {/* Footer */}
         <div className="px-5 py-3 border-t text-[10px] text-txt-muted" style={{ borderColor: 'var(--glass-border)' }}>
-          Alarme werden bei jedem Quote-Refresh (alle 30s) geprüft. Browser-Benachrichtigungen müssen erlaubt sein.
+          {de
+            ? 'Alarme werden bei jedem Quote-Refresh (alle 30s) geprüft.'
+            : 'Alerts are checked on every quote refresh (every 30s).'}
         </div>
       </div>
     </div>

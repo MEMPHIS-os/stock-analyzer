@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw } from 'lucide-react';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid } from 'lucide-react';
 import { useApp } from '../context';
+import { SplitFlap } from './SplitFlap';
 
 const SHORTCUTS = [
   { keys: 'Ctrl+K', de: 'Aktie suchen', en: 'Search stock' },
@@ -17,10 +18,31 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const { theme, toggleTheme, locale, setLocale, displayCurrency, toggleDisplayCurrency } = useApp();
+  const {
+    theme,
+    toggleTheme,
+    locale,
+    setLocale,
+    displayCurrency,
+    toggleDisplayCurrency,
+    splitFlapEnabled,
+    toggleSplitFlap,
+  } = useApp();
   const de = locale === 'de';
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [previewValue, setPreviewValue] = useState('123.45');
+
+  // Cycle the preview value while the panel is open so the user sees the flip
+  useEffect(() => {
+    const samples = ['123.45', '124.10', '123.88', '125.02'];
+    let i = 0;
+    const id = setInterval(() => {
+      i = (i + 1) % samples.length;
+      setPreviewValue(samples[i]);
+    }, 1500);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     window.electronAPI?.getAppVersion().then(setAppVersion).catch(() => {});
@@ -163,6 +185,48 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <span className="text-sm font-medium">Original</span>
               </button>
             </div>
+          </div>
+
+          {/* Split-Flap (Solari board) */}
+          <div>
+            <label className="text-[11px] text-txt-muted font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <LayoutGrid className="w-3.5 h-3.5" />
+              {de ? 'Anzeigetafel-Modus' : 'Split-Flap Display'}
+            </label>
+            <button
+              onClick={toggleSplitFlap}
+              className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border transition-all duration-200 ${
+                splitFlapEnabled
+                  ? 'bg-accent/10 border-accent/40 shadow-glow-sm'
+                  : 'border-border/10 hover:border-border/30'
+              }`}
+              style={!splitFlapEnabled ? { background: 'var(--glass-bg)' } : {}}
+            >
+              <div className="flex flex-col items-start gap-0.5 text-left">
+                <span className="text-sm font-medium text-txt-primary">
+                  {de ? 'Klassische Anzeigetafel' : 'Classic departure board'}
+                </span>
+                <span className="text-[11px] text-txt-muted leading-snug">
+                  {de
+                    ? 'Kurse blättern wie auf alten Flughafen-Anzeigen'
+                    : 'Prices flip like old airport displays'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <SplitFlap value={previewValue} size={20} tone="accent" />
+                <span
+                  className={`relative inline-flex w-9 h-5 rounded-full transition-colors duration-200 ${
+                    splitFlapEnabled ? 'bg-accent' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                      splitFlapEnabled ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </span>
+              </div>
+            </button>
           </div>
 
           {/* Shortcuts */}

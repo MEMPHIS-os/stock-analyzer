@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
+import { SplitFlap } from './SplitFlap';
 
 export interface TickerItem {
   symbol: string;
@@ -16,15 +17,17 @@ interface TickerBandProps {
   items: TickerItem[];
 }
 
-function TickerSegment({ items, fp, onNavigate }: {
+function TickerSegment({ items, fp, onNavigate, splitFlap }: {
   items: TickerItem[];
   fp: (price: number | undefined | null, currency?: string) => string;
   onNavigate: (symbol: string) => void;
+  splitFlap: boolean;
 }) {
   return (
     <>
       {items.map((item, i) => {
         const isPositive = item.change >= 0;
+        const pctStr = `${isPositive ? '+' : ''}${item.changePercent.toFixed(2)}%`;
         return (
           <span key={`${item.symbol}-${i}`} className="inline-flex items-center">
             <span className="mx-3 w-1 h-1 rounded-full bg-border/30 shrink-0" />
@@ -34,9 +37,17 @@ function TickerSegment({ items, fp, onNavigate }: {
               style={{ fontSize: '11px', lineHeight: '24px' }}
             >
               <span className="font-bold text-accent">{item.symbol}</span>
-              <span className="text-txt-secondary font-mono">
-                {fp(item.price, item.currency || 'USD')}
-              </span>
+              {splitFlap ? (
+                <SplitFlap
+                  value={fp(item.price, item.currency || 'USD')}
+                  size={16}
+                  tone="neutral"
+                />
+              ) : (
+                <span className="text-txt-secondary font-mono">
+                  {fp(item.price, item.currency || 'USD')}
+                </span>
+              )}
               <span
                 className={`inline-flex items-center gap-0.5 font-semibold ${
                   isPositive ? 'text-success' : 'text-danger'
@@ -47,8 +58,11 @@ function TickerSegment({ items, fp, onNavigate }: {
                 ) : (
                   <TrendingDown className="w-2.5 h-2.5" />
                 )}
-                {isPositive ? '+' : ''}
-                {item.changePercent.toFixed(2)}%
+                {splitFlap ? (
+                  <SplitFlap value={pctStr} size={16} tone={isPositive ? 'positive' : 'negative'} />
+                ) : (
+                  <>{pctStr}</>
+                )}
               </span>
             </button>
           </span>
@@ -60,6 +74,7 @@ function TickerSegment({ items, fp, onNavigate }: {
 
 export default function TickerBand({ items }: TickerBandProps) {
   const { fp } = usePrice();
+  const { splitFlapEnabled } = useApp();
   const navigate = useNavigate();
   const trackRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
@@ -128,7 +143,7 @@ export default function TickerBand({ items }: TickerBandProps) {
       >
         {[0, 1, 2].map((copy) => (
           <div key={copy} className="inline-flex items-center shrink-0">
-            <TickerSegment items={items} fp={fp} onNavigate={handleNavigate} />
+            <TickerSegment items={items} fp={fp} onNavigate={handleNavigate} splitFlap={splitFlapEnabled} />
           </div>
         ))}
       </div>
