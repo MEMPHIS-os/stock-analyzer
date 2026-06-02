@@ -26,6 +26,9 @@ export interface QuoteData {
   fiftyTwoWeekLow: number;
   marketCap?: number;
   averageVolume?: number;
+  // Yahoo's actual average-volume fields (it does not return `averageVolume`)
+  averageDailyVolume3Month?: number;
+  averageDailyVolume10Day?: number;
   currency?: string;
   exchange?: string;
   exchangeTimezoneName?: string;

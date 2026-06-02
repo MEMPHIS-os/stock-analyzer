@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Newspaper, ExternalLink, AlertCircle, Clock } from 'lucide-react';
 import { fetchNews } from '../api';
 import { formatTimeAgo } from '../formatters';
-import LoadingSpinner from './LoadingSpinner';
 import type { NewsItem } from '../types';
 
 interface NewsFeedProps {
@@ -35,7 +34,16 @@ export default function NewsFeed({ symbol }: NewsFeedProps) {
     };
   }, [symbol]);
 
-  if (loading) return <LoadingSpinner text="Lade News..." />;
+  if (loading) {
+    return (
+      <div className="animate-slide-up space-y-3">
+        <div className="h-40 rounded-2xl skeleton-shimmer" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-16 rounded-lg skeleton-shimmer" />
+        ))}
+      </div>
+    );
+  }
 
   if (error) {
     return (

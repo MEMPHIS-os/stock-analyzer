@@ -50,14 +50,19 @@ export function createApp() {
 const cache = new Map<string, { data: any; expires: number }>();
 
 function getCached(key: string): any | null {
-  // Check memory first
+  // Memory cache only. A miss MUST return null so the endpoint performs a fresh
+  // fetch — otherwise live data (quotes, indices, …) would freeze on first load.
   const entry = cache.get(key);
   if (entry && Date.now() < entry.expires) return entry.data;
   if (entry) cache.delete(key);
-  // Fallback to disk cache (even expired — for offline mode)
-  const disk = diskCache[key];
-  if (disk) return disk.data;
   return null;
+}
+
+// Stale disk-backed fallback — only used inside endpoint catch blocks when a
+// live fetch fails (offline mode / Yahoo outage). Returns data regardless of age.
+function getStale(key: string): any | null {
+  const disk = diskCache[key];
+  return disk ? disk.data : null;
 }
 
 function setCache(key: string, data: any, ttlMs: number) {
@@ -189,7 +194,7 @@ async function v8QuoteFallback(symbol: string): Promise<any | null> {
       longName: meta.longName || meta.shortName || meta.symbol,
       regularMarketPrice: meta.regularMarketPrice,
       regularMarketChange: (meta.regularMarketPrice || 0) - (meta.chartPreviousClose || meta.previousClose || 0),
-      regularMarketChangePercent: meta.chartPreviousClose
+      regularMarketChangePercent: (meta.chartPreviousClose && meta.regularMarketPrice != null)
         ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100
         : 0,
       currency: meta.currency || 'USD',
@@ -223,6 +228,9 @@ app.get('/api/quote/:symbol', async (req, res) => {
     // Fallback: try v8 chart API (no auth needed)
     const fallback = await v8QuoteFallback(req.params.symbol);
     if (fallback) return res.json(fallback);
+    // Last resort: stale cached data (offline mode)
+    const stale = getStale(`quote:${req.params.symbol}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch quote' });
   }
 });
@@ -251,6 +259,9 @@ app.get('/api/quotes', async (req, res) => {
     const fallbacks = await Promise.all(symbols.map(s => v8QuoteFallback(s.trim())));
     const validFallbacks = fallbacks.filter(Boolean);
     if (validFallbacks.length > 0) return res.json(validFallbacks);
+    // Last resort: stale cached data (offline mode)
+    const stale = getStale(`quotes:${symbols.sort().join(',')}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch quotes' });
   }
 });
@@ -296,6 +307,9 @@ app.get('/api/chart/:symbol', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error(`Chart error for ${req.params.symbol}:`, error.message);
+    const { range = '1y', interval = '1d' } = req.query;
+    const stale = getStale(`chart:${req.params.symbol}:${range}:${interval}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch chart data' });
   }
 });
@@ -329,6 +343,9 @@ app.get('/api/search', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Search error:', error.message);
+    const q = (req.query.q as string) || '';
+    const stale = getStale(`search:${q.toLowerCase().trim()}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to search' });
   }
 });
@@ -369,6 +386,8 @@ app.get('/api/fundamentals/:symbol', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error(`Fundamentals error for ${req.params.symbol}:`, error.message);
+    const stale = getStale(`fundamentals:${req.params.symbol}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch fundamentals' });
   }
 });
@@ -458,18 +477,25 @@ app.get('/api/news/:symbol', async (req, res) => {
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
-    // Try Google News RSS first, Finnhub as fallback
-    let news = await fetchGoogleNewsRSS(symbol);
+    // Try Google News RSS first, Finnhub as fallback.
+    // Guard the Google call so a network error still lets Finnhub run.
+    let news: any[] = [];
+    try {
+      news = await fetchGoogleNewsRSS(symbol);
+    } catch (e: any) {
+      console.error(`Google News failed for ${symbol}, falling back to Finnhub:`, e.message);
+    }
 
     // If Google News returned too few, supplement with Finnhub
     if (news.length < 5) {
       const finnhubNews = await fetchFinnhubNews(symbol);
       // Merge, avoiding duplicate titles
-      const titles = new Set(news.map((n) => n.title.toLowerCase()));
+      const titles = new Set(news.map((n) => (n.title || '').toLowerCase()));
       for (const item of finnhubNews) {
-        if (!titles.has(item.title.toLowerCase())) {
+        const key = (item.title || '').toLowerCase();
+        if (key && !titles.has(key)) {
           news.push(item);
-          titles.add(item.title.toLowerCase());
+          titles.add(key);
         }
       }
     }
@@ -486,6 +512,8 @@ app.get('/api/news/:symbol', async (req, res) => {
     res.json(news);
   } catch (error: any) {
     console.error(`News error for ${req.params.symbol}:`, error.message);
+    const stale = getStale(`news:${req.params.symbol}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch news' });
   }
 });
@@ -515,7 +543,7 @@ app.get('/api/sparklines', async (req, res) => {
           result[symbol] = filtered;
           setCache(cacheKey, filtered, 300_000);
         } catch {
-          result[symbol] = [];
+          result[symbol] = getStale(cacheKey) || [];
         }
       })
     );
@@ -575,6 +603,8 @@ app.get('/api/heatmap', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Heatmap error:', error.message);
+    const stale = getStale('heatmap');
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch heatmap data' });
   }
 });
@@ -636,6 +666,8 @@ app.get('/api/screener', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Screener error:', error.message);
+    const stale = getStale('screener');
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch screener data' });
   }
 });
@@ -736,6 +768,8 @@ app.get('/api/index-constituents/:symbol', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Index constituents error:', error.message);
+    const stale = getStale(`index-constituents:${decodeURIComponent(req.params.symbol)}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch index constituents' });
   }
 });
@@ -805,6 +839,8 @@ app.get('/api/globalmarkets', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Global markets error:', error.message);
+    const stale = getStale('globalmarkets');
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch global markets' });
   }
 });
@@ -833,6 +869,10 @@ app.get('/api/exchangerate', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Exchange rate error:', error.message);
+    const from = (req.query.from as string || 'USD').toUpperCase();
+    const to = (req.query.to as string || 'EUR').toUpperCase();
+    const stale = getStale(`fx:${from}${to}`);
+    if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch exchange rate' });
   }
 });

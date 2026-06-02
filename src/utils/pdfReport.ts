@@ -73,7 +73,7 @@ export async function generateStockReport(data: StockReportData): Promise<void> 
     row("Day's Range", `${formatPrice(quote.regularMarketDayLow, currency, loc)} &ndash; ${formatPrice(quote.regularMarketDayHigh, currency, loc)}`),
     row('52-Week Range', `${formatPrice(quote.fiftyTwoWeekLow, currency, loc)} &ndash; ${formatPrice(quote.fiftyTwoWeekHigh, currency, loc)}`),
     row('Volume', formatVolume(quote.regularMarketVolume)),
-    row('Avg Volume', quote.averageVolume != null ? formatVolume(quote.averageVolume) : '&mdash;'),
+    row('Avg Volume', (() => { const av = quote.averageVolume ?? quote.averageDailyVolume3Month ?? quote.averageDailyVolume10Day; return av != null ? formatVolume(av) : '&mdash;'; })()),
     row('Market Cap', quote.marketCap != null ? formatLargeNumber(quote.marketCap) : '&mdash;'),
   ];
 

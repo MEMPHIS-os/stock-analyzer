@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Grid3x3 } from 'lucide-react';
 import { fetchHeatmap, type HeatmapStock } from '../api';
 import { formatPercent, formatLargeNumber } from '../formatters';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 function getHeatmapColor(pct: number): string {
   const clamped = Math.max(-5, Math.min(5, pct));
@@ -103,7 +102,16 @@ export default function Heatmap() {
     return () => ro.disconnect();
   }, []);
 
-  if (loading) return <LoadingSpinner text="Lade Heatmap..." />;
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="h-8 w-56 rounded-lg skeleton-shimmer" />
+        <div className="card overflow-hidden">
+          <div className="w-full skeleton-shimmer" style={{ aspectRatio: '2/1' }} />
+        </div>
+      </div>
+    );
+  }
 
   const allStocks = Object.values(data)
     .flat()
@@ -115,10 +123,12 @@ export default function Heatmap() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-2">
-        <Grid3x3 className="w-5 h-5 text-accent" />
-        <h2 className="text-lg font-bold text-txt-primary">Markt-Heatmap</h2>
-        <span className="text-xs text-txt-muted ml-2">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="p-2 rounded-xl bg-accent/10">
+          <Grid3x3 className="w-5 h-5 text-accent" />
+        </div>
+        <h2 className="section-title text-xl">Markt-Heatmap</h2>
+        <span className="text-xs text-txt-muted ml-1">
           Größe = Marktkapitalisierung, Farbe = Tagesveränderung
         </span>
       </div>
@@ -205,15 +215,16 @@ export default function Heatmap() {
           const sectorChange =
             stocks.reduce((s, st) => s + st.changePercent * st.marketCap, 0) /
             stocks.reduce((s, st) => s + st.marketCap, 0);
+          const up = sectorChange >= 0;
           return (
             <span
               key={sector}
-              className="px-3 py-1 bg-dark-700 rounded-lg text-xs border border-border/20 flex items-center gap-2"
+              className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 ring-1 transition-colors duration-200 ${
+                up ? 'bg-success/10 ring-success/15' : 'bg-danger/10 ring-danger/15'
+              }`}
             >
-              <span className="text-txt-secondary">{sector}</span>
-              <span
-                className={`font-mono ${sectorChange >= 0 ? 'text-success' : 'text-danger'}`}
-              >
+              <span className="text-txt-secondary font-medium">{sector}</span>
+              <span className={`font-mono font-semibold tabular-nums ${up ? 'text-success' : 'text-danger'}`}>
                 {formatPercent(sectorChange)}
               </span>
             </span>
@@ -224,13 +235,13 @@ export default function Heatmap() {
       {/* Heatmap Tooltip */}
       {tooltip && (
         <div
-          className="fixed z-[100] pointer-events-none bg-dark-800 border border-border/40 rounded-lg shadow-xl p-3 text-xs animate-fade-in"
+          className="fixed z-[100] pointer-events-none card border border-border/20 shadow-depth-lg p-3 text-xs animate-scale-in"
           style={{ left: tooltip.x + 14, top: tooltip.y - 10, transform: 'translateY(-100%)', minWidth: 180 }}
         >
           <div className="flex items-center justify-between gap-3 mb-1.5">
-            <span className="font-bold text-txt-primary text-sm">{tooltip.stock.symbol}</span>
+            <span className="font-mono font-bold text-accent text-sm">{tooltip.stock.symbol}</span>
             <span
-              className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded ${
+              className={`text-xs font-mono font-semibold tabular-nums px-1.5 py-0.5 rounded-md ${
                 tooltip.stock.changePercent >= 0
                   ? 'bg-success/15 text-success'
                   : 'bg-danger/15 text-danger'
@@ -240,14 +251,14 @@ export default function Heatmap() {
             </span>
           </div>
           <div className="text-txt-secondary text-[11px] mb-2 truncate">{tooltip.stock.shortName}</div>
-          <div className="space-y-1 border-t border-border/20 pt-1.5">
+          <div className="space-y-1 border-t border-border/10 pt-1.5">
             <div className="flex justify-between gap-4">
               <span className="text-txt-muted">Kurs</span>
-              <span className="font-mono text-txt-primary">${tooltip.stock.price.toFixed(2)}</span>
+              <span className="font-mono tabular-nums text-txt-primary">${tooltip.stock.price.toFixed(2)}</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-txt-muted">Marktkapit.</span>
-              <span className="font-mono text-txt-primary">{formatLargeNumber(tooltip.stock.marketCap)}</span>
+              <span className="font-mono tabular-nums text-txt-primary">{formatLargeNumber(tooltip.stock.marketCap)}</span>
             </div>
           </div>
         </div>

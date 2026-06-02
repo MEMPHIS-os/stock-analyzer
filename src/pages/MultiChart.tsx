@@ -33,15 +33,15 @@ export default function MultiChart() {
     <div className="space-y-3 animate-fade-in">
       {/* Layout toolbar */}
       <div className="flex items-center gap-3">
-        <div className="flex gap-0.5 bg-dark-700 rounded-lg p-0.5">
+        <div className="flex gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1">
           {LAYOUT_OPTIONS.map((lo) => (
             <button
               key={lo.value}
               onClick={() => setLayout(lo.value)}
-              className={`p-1.5 rounded-md transition-colors ${
+              className={`p-1.5 rounded-lg transition-all duration-200 ${
                 layout === lo.value
-                  ? 'bg-accent text-white'
-                  : 'text-txt-secondary hover:text-txt-primary'
+                  ? 'bg-accent text-white shadow-glow-sm'
+                  : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
               }`}
               title={lo.label}
             >
@@ -49,7 +49,7 @@ export default function MultiChart() {
             </button>
           ))}
         </div>
-        <span className="text-sm font-semibold text-txt-primary">Multi-Chart Ansicht</span>
+        <span className="text-sm font-bold text-txt-primary">Multi-Chart Ansicht</span>
         <span className="text-xs text-txt-muted">
           Klicke auf den Symbol-Namen um zu wechseln
         </span>

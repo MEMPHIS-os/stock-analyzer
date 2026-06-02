@@ -107,29 +107,31 @@ export default function EarningsCalendar({ earnings, currency }: EarningsCalenda
     <div className="animate-slide-up space-y-4">
       {/* Header */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold text-txt-primary">Earnings-Kalender</h3>
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="p-1.5 rounded-lg bg-accent/10">
+            <Calendar className="w-4 h-4 text-accent" />
+          </div>
+          <h3 className="text-sm font-bold text-txt-primary">Earnings-Kalender</h3>
         </div>
 
         {/* Summary Stats */}
         {summaryStats && (
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-dark-700 rounded-lg p-3 text-center">
+            <div className="bg-dark-700/40 rounded-xl p-3 text-center ring-1 ring-border/5">
               <div className="text-[10px] text-txt-muted uppercase tracking-wide mb-1">Beat-Rate</div>
-              <div className={`text-lg font-bold font-mono ${summaryStats.beatRate >= 50 ? 'text-success' : 'text-danger'}`}>
+              <div className={`text-lg font-bold font-mono tabular-nums ${summaryStats.beatRate >= 50 ? 'text-success' : 'text-danger'}`}>
                 {summaryStats.beatRate.toFixed(0)}%
               </div>
             </div>
-            <div className="bg-dark-700 rounded-lg p-3 text-center">
+            <div className="bg-dark-700/40 rounded-xl p-3 text-center ring-1 ring-border/5">
               <div className="text-[10px] text-txt-muted uppercase tracking-wide mb-1">{'\u00D8'} {'\u00DC'}berraschung</div>
-              <div className={`text-lg font-bold font-mono ${summaryStats.avgSurprise >= 0 ? 'text-success' : 'text-danger'}`}>
+              <div className={`text-lg font-bold font-mono tabular-nums ${summaryStats.avgSurprise >= 0 ? 'text-success' : 'text-danger'}`}>
                 {summaryStats.avgSurprise >= 0 ? '+' : ''}{summaryStats.avgSurprise.toFixed(1)}%
               </div>
             </div>
-            <div className="bg-dark-700 rounded-lg p-3 text-center">
+            <div className="bg-dark-700/40 rounded-xl p-3 text-center ring-1 ring-border/5">
               <div className="text-[10px] text-txt-muted uppercase tracking-wide mb-1">Serie</div>
-              <div className={`text-lg font-bold font-mono ${summaryStats.streakType === 'beat' ? 'text-success' : 'text-danger'}`}>
+              <div className={`text-lg font-bold font-mono tabular-nums ${summaryStats.streakType === 'beat' ? 'text-success' : 'text-danger'}`}>
                 {summaryStats.streakCount}x {summaryStats.streakType === 'beat' ? 'Beat' : 'Miss'}
               </div>
             </div>
@@ -140,36 +142,38 @@ export default function EarningsCalendar({ earnings, currency }: EarningsCalenda
       {/* Quarterly Earnings Table */}
       {quarterResults.length > 0 && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">Quartals-Ergebnisse</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <TrendingUp className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">Quartals-Ergebnisse</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border/20">
-                  <th className="text-left py-2 text-txt-muted font-medium">Quartal</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">Tats. EPS</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">Sch{'\u00E4'}tz. EPS</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">{'\u00DC'}berraschung</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">%</th>
-                  <th className="text-center py-2 text-txt-muted font-medium"></th>
+                <tr className="border-b border-border/10">
+                  <th className="text-left py-2 text-txt-muted font-semibold uppercase tracking-wider">Quartal</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">Tats. EPS</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">Sch{'\u00E4'}tz. EPS</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">{'\u00DC'}berraschung</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">%</th>
+                  <th className="text-center py-2 text-txt-muted font-semibold uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody>
                 {[...quarterResults].reverse().map((q) => (
-                  <tr key={q.date} className="border-b border-border/10 last:border-0 hover:bg-dark-700/50 transition-colors">
+                  <tr key={q.date} className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] transition-colors">
                     <td className="py-2 font-mono text-txt-primary">{q.date}</td>
-                    <td className="py-2 text-right font-mono text-txt-primary">
+                    <td className="py-2 text-right font-mono tabular-nums text-txt-primary">
                       {currencySymbol}{q.actual.toFixed(2)}
                     </td>
-                    <td className="py-2 text-right font-mono text-txt-secondary">
+                    <td className="py-2 text-right font-mono tabular-nums text-txt-secondary">
                       {currencySymbol}{q.estimate.toFixed(2)}
                     </td>
-                    <td className={`py-2 text-right font-mono ${q.beat ? 'text-success' : 'text-danger'}`}>
+                    <td className={`py-2 text-right font-mono tabular-nums ${q.beat ? 'text-success' : 'text-danger'}`}>
                       {q.surprise >= 0 ? '+' : ''}{currencySymbol}{q.surprise.toFixed(2)}
                     </td>
-                    <td className={`py-2 text-right font-mono ${q.beat ? 'text-success' : 'text-danger'}`}>
+                    <td className={`py-2 text-right font-mono tabular-nums ${q.beat ? 'text-success' : 'text-danger'}`}>
                       {q.surprisePercent >= 0 ? '+' : ''}{q.surprisePercent.toFixed(1)}%
                     </td>
                     <td className="py-2 text-center">
@@ -254,31 +258,33 @@ export default function EarningsCalendar({ earnings, currency }: EarningsCalenda
       {/* Annual Revenue & Earnings */}
       {yearlyWithGrowth.length > 0 && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">J{'\u00E4'}hrliche Finanzen</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <TrendingUp className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">J{'\u00E4'}hrliche Finanzen</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border/20">
-                  <th className="text-left py-2 text-txt-muted font-medium">Jahr</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">Umsatz</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">Gewinn</th>
-                  <th className="text-right py-2 text-txt-muted font-medium">YoY Wachstum</th>
+                <tr className="border-b border-border/10">
+                  <th className="text-left py-2 text-txt-muted font-semibold uppercase tracking-wider">Jahr</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">Umsatz</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">Gewinn</th>
+                  <th className="text-right py-2 text-txt-muted font-semibold uppercase tracking-wider">YoY Wachstum</th>
                 </tr>
               </thead>
               <tbody>
                 {[...yearlyWithGrowth].reverse().map((y) => (
-                  <tr key={y.date} className="border-b border-border/10 last:border-0 hover:bg-dark-700/50 transition-colors">
+                  <tr key={y.date} className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] transition-colors">
                     <td className="py-2 font-mono text-txt-primary">{y.date}</td>
-                    <td className="py-2 text-right font-mono text-accent">
+                    <td className="py-2 text-right font-mono tabular-nums text-accent">
                       {formatLargeNumber(y.revenue)}
                     </td>
-                    <td className={`py-2 text-right font-mono ${y.earnings >= 0 ? 'text-success' : 'text-danger'}`}>
+                    <td className={`py-2 text-right font-mono tabular-nums ${y.earnings >= 0 ? 'text-success' : 'text-danger'}`}>
                       {formatLargeNumber(y.earnings)}
                     </td>
-                    <td className="py-2 text-right font-mono">
+                    <td className="py-2 text-right font-mono tabular-nums">
                       {y.revenueGrowth !== null ? (
                         <span className={y.revenueGrowth >= 0 ? 'text-success' : 'text-danger'}>
                           {y.revenueGrowth >= 0 ? '+' : ''}{y.revenueGrowth.toFixed(1)}%

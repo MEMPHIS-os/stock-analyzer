@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type DragEvent } from 'react';
+import { useEffect, useState, useRef, useCallback, useId, useMemo, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -13,12 +13,15 @@ import {
   GripVertical,
   LineChart,
   PieChart,
+  LayoutDashboard,
+  Wallet,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { fetchQuotes, fetchSparklines, fetchScreener } from '../api';
 import type { ScreenerStock } from '../api';
-import { formatPercent } from '../formatters';
+import { formatPercent, formatChange } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
+import { usePortfolio } from '../hooks/usePortfolio';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StockContextMenu from '../components/ContextMenu';
 import { SkeletonCard, SkeletonTableRow } from '../components/Skeleton';
@@ -65,13 +68,14 @@ const SECTOR_NAMES: Record<string, string> = {
 // ─── MiniSparkline ───
 
 function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }) {
+  const reactId = useId();
   if (!data.length || data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
   const h = 32;
   const w = 80;
-  const id = `spark-${positive ? 'up' : 'down'}-${Math.random().toString(36).substr(2, 5)}`;
+  const id = `spark-${reactId}`;
   const points = data
     .map((v, i) => {
       const x = (i / (data.length - 1)) * w;
@@ -96,6 +100,54 @@ function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }
         fill="none"
         stroke={color}
         strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// ─── BackdropSparkline (full-bleed, sits behind card content) ───
+
+function BackdropSparkline({ data, positive }: { data: number[]; positive: boolean }) {
+  const reactId = useId();
+  if (!data.length || data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const w = 100;
+  const h = 40;
+  const id = `bspark-${reactId}`;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 3) - 1.5;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const line = pts.join(' ');
+  const area = `0,${h} ${line} ${w},${h}`;
+  const color = positive ? '#26a69a' : '#ef5350';
+
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="absolute inset-x-0 bottom-0 w-full h-12 pointer-events-none opacity-90 transition-opacity duration-300 group-hover:opacity-100"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.20" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${id})`} />
+      <polyline
+        points={line}
+        fill="none"
+        stroke={color}
+        strokeOpacity="0.5"
+        strokeWidth="1.25"
+        vectorEffect="non-scaling-stroke"
         strokeLinejoin="round"
         strokeLinecap="round"
       />
@@ -328,13 +380,152 @@ function SectorPerformanceWidget({ quotes }: { quotes: QuoteData[] }) {
   );
 }
 
+// ─── Dashboard Hero ───
+
+interface PortfolioSnapshot {
+  totalValue: number;
+  dayChange: number;
+  dayChangePercent: number;
+  totalPnl: number;
+  totalPnlPercent: number;
+  currency: string;
+}
+
+function DashboardHero({
+  indices,
+  snapshot,
+  configOpen,
+  onToggleConfig,
+  navigate,
+  locale,
+  t,
+}: {
+  indices: QuoteData[];
+  snapshot: PortfolioSnapshot | null;
+  configOpen: boolean;
+  onToggleConfig: () => void;
+  navigate: (path: string) => void;
+  locale: 'de' | 'en';
+  t: (key: string) => string;
+}) {
+  const { fp } = usePrice();
+  const hour = new Date().getHours();
+  const greetKey =
+    hour < 12 ? 'dashboard.greetingMorning' : hour < 18 ? 'dashboard.greetingAfternoon' : 'dashboard.greetingEvening';
+
+  const dateStr = new Date().toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  // Market breadth from the loaded overview indices
+  const valid = indices.filter((i) => i.regularMarketChangePercent != null && !isNaN(i.regularMarketChangePercent));
+  const up = valid.filter((i) => i.regularMarketChangePercent > 0).length;
+  const down = valid.filter((i) => i.regularMarketChangePercent < 0).length;
+  const avg = valid.length ? valid.reduce((s, i) => s + i.regularMarketChangePercent, 0) / valid.length : 0;
+
+  const sentiment = avg > 0.1 ? 'bullish' : avg < -0.1 ? 'bearish' : 'mixed';
+  const SentimentIcon = sentiment === 'bullish' ? TrendingUp : sentiment === 'bearish' ? TrendingDown : Activity;
+  const sentimentLabel =
+    sentiment === 'bullish'
+      ? t('dashboard.sentimentBullish')
+      : sentiment === 'bearish'
+        ? t('dashboard.sentimentBearish')
+        : t('dashboard.sentimentMixed');
+  const tone =
+    sentiment === 'bullish'
+      ? { text: 'text-success', bg: 'bg-success/10', ring: 'ring-success/20' }
+      : sentiment === 'bearish'
+        ? { text: 'text-danger', bg: 'bg-danger/10', ring: 'ring-danger/20' }
+        : { text: 'text-accent', bg: 'bg-accent/10', ring: 'ring-accent/20' };
+
+  return (
+    <div className="card-glow p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 animate-slide-up">
+      {/* Greeting */}
+      <div className="flex items-center gap-3.5 min-w-0">
+        <div className="hidden sm:flex p-2.5 rounded-2xl bg-accent/10 shrink-0">
+          <LayoutDashboard className="w-6 h-6 text-accent" />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gradient-warm leading-tight">
+            {t(greetKey)}
+          </h1>
+          <p className="text-xs sm:text-sm text-txt-secondary capitalize truncate">{dateStr}</p>
+        </div>
+      </div>
+
+      {/* Right side: portfolio snapshot + market pulse + config */}
+      <div className="flex items-center gap-2.5 sm:ml-auto flex-wrap">
+        {snapshot && (
+          <button
+            onClick={() => navigate('/portfolio')}
+            className="flex items-center gap-3 px-3.5 py-2 rounded-xl bg-dark-700/40 ring-1 ring-border/10 hover:ring-accent/30 transition-all duration-200 active:scale-[0.98]"
+            title={t('nav.portfolio')}
+          >
+            <div className="p-1.5 rounded-lg bg-accent/10 shrink-0">
+              <Wallet className="w-4 h-4 text-accent" />
+            </div>
+            <div className="flex flex-col leading-none gap-0.5 text-left">
+              <span className="text-sm font-bold font-mono text-txt-primary">
+                {fp(snapshot.totalValue, snapshot.currency)}
+              </span>
+              <span
+                className={`text-[11px] font-mono font-semibold ${
+                  snapshot.dayChange >= 0 ? 'text-success' : 'text-danger'
+                }`}
+              >
+                {snapshot.dayChange >= 0 ? '+' : ''}
+                {fp(snapshot.dayChange, snapshot.currency)} ({formatPercent(snapshot.dayChangePercent)})
+              </span>
+            </div>
+          </button>
+        )}
+
+        {valid.length > 0 && (
+          <div className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl ${tone.bg} ring-1 ${tone.ring}`}>
+            <SentimentIcon className={`w-4 h-4 ${tone.text}`} />
+            <div className="flex flex-col leading-none gap-0.5">
+              <span className={`text-xs font-semibold ${tone.text}`}>{sentimentLabel}</span>
+              <span className="text-[11px] text-txt-secondary font-mono">
+                <span className="text-success">▲ {up}</span>
+                <span className="mx-1 text-txt-muted">·</span>
+                <span className="text-danger">▼ {down}</span>
+                <span className="mx-1.5 text-txt-muted">|</span>
+                <span className={tone.text}>{formatPercent(avg)}</span>
+              </span>
+            </div>
+            <span className="live-dot ml-0.5" title="Live" />
+          </div>
+        )}
+
+        <button
+          onClick={onToggleConfig}
+          className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 ${
+            configOpen
+              ? 'bg-accent/15 text-accent shadow-glow-sm'
+              : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
+          }`}
+          title={t('dashboard.configure')}
+        >
+          <Settings className={`w-4 h-4 transition-transform duration-300 ${configOpen ? 'rotate-90' : ''}`} />
+          <span className="hidden sm:inline">{t('dashboard.configure')}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { watchlist, locale, t } = useApp();
+  const { watchlist, locale, t, convertPrice } = useApp();
   const { widgets, toggleWidget, reorderWidgets, resetLayout } = useDashboardLayout();
+  const { holdings, totalInvested } = usePortfolio();
   const [configOpen, setConfigOpen] = useState(false);
+  const [holdingQuotes, setHoldingQuotes] = useState<Record<string, { price: number; change: number; currency: string }>>({});
 
   const [indices, setIndices] = useState<QuoteData[]>([]);
   const [watchlistQuotes, setWatchlistQuotes] = useState<QuoteData[]>([]);
@@ -413,6 +604,63 @@ export default function Dashboard() {
     };
   }, [watchlist, needsMajorIndices, needsSectors, needsGainersLosers]);
 
+  // ─── Portfolio snapshot (hero) ───
+
+  const holdingSymbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
+
+  useEffect(() => {
+    if (holdingSymbols.length === 0) {
+      setHoldingQuotes({});
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await fetchQuotes(holdingSymbols);
+        if (!cancelled) {
+          const map: Record<string, { price: number; change: number; currency: string }> = {};
+          for (const q of data) {
+            if (q?.symbol) map[q.symbol] = { price: q.regularMarketPrice, change: q.regularMarketChange ?? 0, currency: q.currency || 'USD' };
+          }
+          setHoldingQuotes(map);
+        }
+      } catch {
+        /* keep stale data */
+      }
+    };
+    load();
+    const iv = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [holdingSymbols]);
+
+  const portfolioSnapshot = useMemo<PortfolioSnapshot | null>(() => {
+    if (holdings.length === 0) return null;
+    let totalValue = 0;
+    let investedValue = 0;
+    let dayChange = 0;
+    let ccy: string | null = null;
+    let mixed = false;
+    for (const h of holdings) {
+      const q = holdingQuotes[h.symbol];
+      const cur = q?.currency || 'USD';
+      const price = q?.price ?? h.avgPrice;
+      const mv = convertPrice(h.shares * price, cur);
+      totalValue += mv.value;
+      investedValue += convertPrice(h.shares * h.avgPrice, cur).value;
+      dayChange += convertPrice(h.shares * (q?.change ?? 0), cur).value;
+      if (ccy === null) ccy = mv.currency;
+      else if (ccy !== mv.currency) mixed = true;
+    }
+    const totalPnl = totalValue - investedValue;
+    const totalPnlPercent = investedValue > 0 ? (totalPnl / investedValue) * 100 : 0;
+    const prevValue = totalValue - dayChange;
+    const dayChangePercent = prevValue !== 0 ? (dayChange / prevValue) * 100 : 0;
+    return { totalValue, dayChange, dayChangePercent, totalPnl, totalPnlPercent, currency: mixed ? 'USD' : (ccy ?? 'USD') };
+  }, [holdings, holdingQuotes, convertPrice]);
+
   // ─── Render widget by type ───
 
   const renderWidget = useCallback(
@@ -450,6 +698,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="space-y-6 animate-fade-in">
+        <div className="h-20 rounded-2xl skeleton-shimmer" />
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <SkeletonCard key={i} />
@@ -470,21 +719,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Header row with config button */}
-      <div className="flex items-center justify-end">
-        <button
-          onClick={() => setConfigOpen((prev) => !prev)}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-            configOpen
-              ? 'bg-accent/15 text-accent shadow-glow-sm'
-              : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
-          }`}
-          title="Dashboard konfigurieren"
-        >
-          <Settings className={`w-4 h-4 transition-transform duration-300 ${configOpen ? 'rotate-90' : ''}`} />
-          <span className="hidden sm:inline">Konfigurieren</span>
-        </button>
-      </div>
+      {/* Hero header */}
+      <DashboardHero
+        indices={indices}
+        snapshot={portfolioSnapshot}
+        configOpen={configOpen}
+        onToggleConfig={() => setConfigOpen((prev) => !prev)}
+        navigate={navigate}
+        locale={locale}
+        t={t}
+      />
 
       {/* Config Panel */}
       {configOpen && (
@@ -535,29 +779,34 @@ function MarketOverviewSection({
           return (
             <div
               key={idx.symbol}
-              className="card p-4 cursor-pointer group"
+              className="card relative overflow-hidden p-4 pb-9 cursor-pointer group"
               onClick={() => navigate(`/stock/${idx.symbol}`)}
             >
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-txt-secondary font-medium">
-                  {INDEX_NAMES[idx.symbol] || idx.shortName || idx.symbol}
+              <BackdropSparkline data={sparkData} positive={isPositive} />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-wider text-txt-secondary font-semibold truncate">
+                    {INDEX_NAMES[idx.symbol] || idx.shortName || idx.symbol}
+                  </div>
+                  <div className={`flex items-center justify-center w-6 h-6 rounded-lg shrink-0 transition-colors duration-200 ${isPositive ? 'bg-success/10 group-hover:bg-success/20' : 'bg-danger/10 group-hover:bg-danger/20'}`}>
+                    {isPositive ? (
+                      <ArrowUpRight className="w-3.5 h-3.5 text-success" />
+                    ) : (
+                      <ArrowDownRight className="w-3.5 h-3.5 text-danger" />
+                    )}
+                  </div>
                 </div>
-                <div className={`p-1 rounded-lg transition-colors duration-200 ${isPositive ? 'bg-success/10 group-hover:bg-success/20' : 'bg-danger/10 group-hover:bg-danger/20'}`}>
-                  {isPositive ? (
-                    <ArrowUpRight className="w-3.5 h-3.5 text-success" />
-                  ) : (
-                    <ArrowDownRight className="w-3.5 h-3.5 text-danger" />
-                  )}
+                <div className="text-xl font-bold font-mono text-txt-primary mt-2 tracking-tight tabular-nums">
+                  {fp(idx.regularMarketPrice, idx.currency)}
                 </div>
-              </div>
-              <div className="text-xl font-bold font-mono text-txt-primary mt-1">
-                {fp(idx.regularMarketPrice, idx.currency)}
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className={`text-sm font-mono font-semibold ${isPositive ? 'text-success' : 'text-danger'}`}>
-                  {formatPercent(idx.regularMarketChangePercent)}
-                </span>
-                <MiniSparkline data={sparkData} positive={isPositive} />
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded-md ${isPositive ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
+                    {formatPercent(idx.regularMarketChangePercent)}
+                  </span>
+                  <span className={`text-[11px] font-mono ${isPositive ? 'text-success/75' : 'text-danger/75'}`}>
+                    {formatChange(idx.regularMarketChange)}
+                  </span>
+                </div>
               </div>
             </div>
           );
@@ -630,15 +879,20 @@ function TopGainersSection({
         onMouseLeave={() => { hoveredRef.current = false; }}
       >
         <div key={`page-${page}`} className="animate-slide-swap">
-          {visibleGainers.map((s) => (
+          {visibleGainers.map((s, i) => (
             <div
               key={s.symbol}
               className="flex items-center justify-between px-5 py-3 border-b border-border/5 last:border-0 hover:bg-dark-600/20 cursor-pointer transition-all duration-200"
               onClick={() => navigate(`/stock/${s.symbol}`)}
             >
-              <div>
-                <span className="font-mono font-bold text-sm text-accent">{s.symbol}</span>
-                <div className="text-[11px] text-txt-secondary truncate max-w-[140px]">{s.shortName}</div>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-success/10 text-success text-[11px] font-mono font-bold shrink-0">
+                  {page * pageSize + i + 1}
+                </span>
+                <div className="min-w-0">
+                  <span className="font-mono font-bold text-sm text-accent">{s.symbol}</span>
+                  <div className="text-[11px] text-txt-secondary truncate max-w-[140px]">{s.shortName}</div>
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-mono text-txt-primary font-medium">
@@ -717,15 +971,20 @@ function TopLosersSection({
         onMouseLeave={() => { hoveredRef.current = false; }}
       >
         <div key={`page-${page}`} className="animate-slide-swap">
-          {visibleLosers.map((s) => (
+          {visibleLosers.map((s, i) => (
             <div
               key={s.symbol}
               className="flex items-center justify-between px-5 py-3 border-b border-border/5 last:border-0 hover:bg-dark-600/20 cursor-pointer transition-all duration-200"
               onClick={() => navigate(`/stock/${s.symbol}`)}
             >
-              <div>
-                <span className="font-mono font-bold text-sm text-accent">{s.symbol}</span>
-                <div className="text-[11px] text-txt-secondary truncate max-w-[140px]">{s.shortName}</div>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-danger/10 text-danger text-[11px] font-mono font-bold shrink-0">
+                  {page * pageSize + i + 1}
+                </span>
+                <div className="min-w-0">
+                  <span className="font-mono font-bold text-sm text-accent">{s.symbol}</span>
+                  <div className="text-[11px] text-txt-secondary truncate max-w-[140px]">{s.shortName}</div>
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-mono text-txt-primary font-medium">

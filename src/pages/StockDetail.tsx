@@ -372,30 +372,30 @@ export default function StockDetail() {
 
   const chartControls = (compact = false) => (
     <>
-      <div className="flex gap-0.5 bg-dark-700 rounded-lg p-0.5">
+      <div className="flex gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1">
         {TIME_RANGES.map((tr) => (
           <button
             key={tr.value}
             onClick={() => setRange(tr.value)}
-            className={`px-${compact ? '2.5' : '3'} py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`${compact ? 'px-2.5' : 'px-3'} py-1 rounded-lg text-xs font-semibold transition-all duration-200 ${
               range === tr.value
-                ? 'bg-accent text-white'
-                : 'text-txt-secondary hover:text-txt-primary'
+                ? 'bg-accent text-white shadow-glow-sm'
+                : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
             }`}
           >
             {tr.label}
           </button>
         ))}
       </div>
-      <div className="flex gap-0.5 bg-dark-700 rounded-lg p-0.5">
+      <div className="flex gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1">
         {CHART_TYPES.map((ct) => (
           <button
             key={ct.value}
             onClick={() => setChartType(ct.value)}
-            className={`p-1.5 rounded-md transition-colors ${
+            className={`p-1.5 rounded-lg transition-all duration-200 ${
               chartType === ct.value
-                ? 'bg-accent text-white'
-                : 'text-txt-secondary hover:text-txt-primary'
+                ? 'bg-accent text-white shadow-glow-sm'
+                : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
             }`}
             title={ct.label}
           >
@@ -408,19 +408,23 @@ export default function StockDetail() {
         <div className="relative" ref={indicatorDropdownRef}>
           <button
             onClick={() => setIndicatorDropdownOpen((prev) => !prev)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-txt-secondary hover:text-txt-primary bg-dark-700 border border-border/20 transition-colors"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+              indicatorDropdownOpen || indicators.length > 0
+                ? 'bg-accent/10 text-accent ring-1 ring-accent/20'
+                : 'text-txt-secondary hover:text-txt-primary bg-dark-700/60 ring-1 ring-border/10'
+            }`}
           >
-            <Layers className="w-3 h-3" />
+            <Layers className="w-3.5 h-3.5" />
             Indikatoren
             {indicators.length > 0 && (
               <span className="px-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold leading-none">
                 {indicators.length}
               </span>
             )}
-            <ChevronDown className={`w-3 h-3 transition-transform ${indicatorDropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${indicatorDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           {indicatorDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-52 bg-dark-800 border border-border/30 rounded-lg shadow-xl z-30 py-1 animate-fade-in">
+            <div className="absolute top-full left-0 mt-1.5 w-52 card border border-border/20 rounded-xl shadow-depth-lg z-30 py-1.5 animate-scale-in">
               {(['Moving Avg.', 'Overlay', 'Volatility', 'Oszillator', 'S/R'] as const).map((group) => {
                 const items = INDICATORS.filter((i) => i.group === group);
                 if (!items.length) return null;
@@ -431,7 +435,7 @@ export default function StockDetail() {
                       <button
                         key={ind.value}
                         onClick={() => toggleIndicator(ind.value)}
-                        className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-dark-600 transition-colors"
+                        className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-dark-600/40 transition-colors"
                       >
                         <span className={indicators.includes(ind.value) ? 'text-accent font-medium' : 'text-txt-primary'}>
                           {ind.label}
@@ -455,10 +459,10 @@ export default function StockDetail() {
         />
         <button
           onClick={() => setLogScale((prev) => !prev)}
-          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
             logScale
-              ? 'bg-accent/20 text-accent border border-accent/30'
-              : 'text-txt-secondary hover:text-txt-primary bg-dark-700 border border-border/20'
+              ? 'bg-accent/10 text-accent ring-1 ring-accent/20'
+              : 'text-txt-secondary hover:text-txt-primary bg-dark-700/60 ring-1 ring-border/10'
           }`}
           title="Logarithmische Skala"
         >
@@ -477,17 +481,17 @@ export default function StockDetail() {
             <span className="font-mono font-bold text-txt-primary">{symbol}</span>
             {chartControls(true)}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={handleScreenshot}
-              className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+              className="p-2 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
               title="Chart als Bild speichern"
             >
               <Camera className="w-4 h-4" />
             </button>
             <button
               onClick={() => setFullscreen(false)}
-              className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+              className="p-2 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
               title="Vollbild beenden (Esc)"
             >
               <Minimize2 className="w-5 h-5" />
@@ -524,31 +528,31 @@ export default function StockDetail() {
       <div className="flex flex-wrap items-center gap-4 py-2">
         {chartControls(false)}
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1">
           <button
             onClick={handleScreenshot}
-            className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+            className="p-1.5 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
             title="Chart als Bild speichern"
           >
             <Camera className="w-4 h-4" />
           </button>
           <button
             onClick={handleCSVExport}
-            className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+            className="p-1.5 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
             title="Daten als CSV exportieren"
           >
             <Download className="w-4 h-4" />
           </button>
           <button
             onClick={handlePDFReport}
-            className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+            className="p-1.5 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
             title="PDF-Report erstellen"
           >
             <FileText className="w-4 h-4" />
           </button>
           <button
             onClick={() => setFullscreen(true)}
-            className="p-2 hover:bg-dark-600 rounded-lg text-txt-secondary hover:text-txt-primary transition-colors"
+            className="p-1.5 hover:bg-dark-600/40 rounded-lg text-txt-secondary hover:text-txt-primary transition-all duration-200"
             title="Vollbild"
           >
             <Maximize2 className="w-4 h-4" />
