@@ -45,50 +45,46 @@ export default function StockOverview({ quote }: StockOverviewProps) {
   ];
 
   return (
-    <div className="animate-fade-in" onContextMenu={(e) => openContextMenu(e, quote.symbol, quote.shortName || quote.longName)}>
+    <div className="card-glow p-5 sm:p-6 animate-fade-in" onContextMenu={(e) => openContextMenu(e, quote.symbol, quote.shortName || quote.longName)}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-txt-primary">{quote.symbol}</h1>
-            <span className="text-sm text-txt-secondary">
-              {quote.shortName || quote.longName}
-            </span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-txt-primary">{quote.symbol}</h1>
             {quote.exchange && (
-              <span className="text-xs bg-dark-600 text-txt-muted px-2 py-0.5 rounded">
+              <span className="text-[10px] uppercase tracking-wider font-semibold bg-dark-600/60 text-txt-secondary px-2 py-0.5 rounded-md">
                 {quote.exchange}
               </span>
             )}
           </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-bold font-mono text-txt-primary">
+          <p className="text-sm text-txt-secondary truncate mb-3.5">
+            {quote.shortName || quote.longName}
+          </p>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <span className="text-3xl sm:text-4xl font-bold font-mono text-txt-primary tabular-nums tracking-tight">
               {fp(quote.regularMarketPrice, cur)}
             </span>
-            <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center gap-2 px-2.5 py-1 rounded-xl ${
+                isPositive ? 'bg-success/10 ring-1 ring-success/15' : 'bg-danger/10 ring-1 ring-danger/15'
+              }`}
+            >
               {isPositive ? (
-                <TrendingUp className="w-5 h-5 text-success" />
+                <TrendingUp className="w-4 h-4 text-success" />
               ) : (
-                <TrendingDown className="w-5 h-5 text-danger" />
+                <TrendingDown className="w-4 h-4 text-danger" />
               )}
-              <span
-                className={`text-lg font-mono font-semibold ${
-                  isPositive ? 'text-success' : 'text-danger'
-                }`}
-              >
+              <span className={`text-sm font-mono font-semibold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
                 {formatChange(quote.regularMarketChange)}
               </span>
-              <span
-                className={`text-lg font-mono ${
-                  isPositive ? 'badge-success' : 'badge-danger'
-                }`}
-              >
+              <span className={`text-sm font-mono font-bold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
                 {formatPercent(quote.regularMarketChangePercent)}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={() => {
               if (inWatchlist) {
@@ -99,13 +95,15 @@ export default function StockOverview({ quote }: StockOverviewProps) {
                 showToast(`${quote.symbol} ${t('toast.addedToWatchlist')}`, 'success');
               }
             }}
-            className={`btn-ghost flex items-center gap-1.5 ${
-              inWatchlist ? 'text-warning' : ''
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.97] ${
+              inWatchlist
+                ? 'bg-warning/10 text-warning ring-1 ring-warning/20'
+                : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
             }`}
             title={inWatchlist ? 'Von Watchlist entfernen' : 'Zur Watchlist hinzufügen'}
           >
             {inWatchlist ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
-            <span className="text-sm hidden sm:inline">
+            <span className="hidden sm:inline">
               {inWatchlist ? 'Entfernen' : 'Watchlist'}
             </span>
           </button>
@@ -114,25 +112,30 @@ export default function StockOverview({ quote }: StockOverviewProps) {
               addCompareSymbol(quote.symbol);
               navigate('/compare');
             }}
-            className="btn-ghost flex items-center gap-1.5"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40 transition-all duration-200 active:scale-[0.97]"
             title="Zum Vergleich hinzufügen"
           >
             <GitCompareArrows className="w-4 h-4" />
-            <span className="text-sm hidden sm:inline">Vergleich</span>
+            <span className="hidden sm:inline">Vergleich</span>
           </button>
         </div>
       </div>
 
       {/* Quick Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5 pt-5 border-t border-border/10 stagger-children">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className="bg-dark-700/50 rounded-lg px-2.5 py-1.5 flex items-center gap-2">
-              <Icon className="w-3.5 h-3.5 text-txt-muted shrink-0" />
+            <div
+              key={stat.label}
+              className="bg-dark-700/40 rounded-xl px-3 py-2 flex items-center gap-2.5 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200"
+            >
+              <div className="p-1.5 rounded-lg bg-accent/[0.07] shrink-0">
+                <Icon className="w-3.5 h-3.5 text-accent/70" />
+              </div>
               <div className="min-w-0">
-                <div className="stat-label truncate">{stat.label}</div>
-                <div className="stat-value">{stat.value}</div>
+                <div className="text-[10px] uppercase tracking-wider text-txt-muted font-semibold truncate">{stat.label}</div>
+                <div className="text-sm font-semibold text-txt-primary font-mono tabular-nums truncate">{stat.value}</div>
               </div>
             </div>
           );

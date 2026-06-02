@@ -8,7 +8,6 @@ import {
 } from '../formatters';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
-import LoadingSpinner from './LoadingSpinner';
 import type { FundamentalsData } from '../types';
 
 interface FundamentalsPanelProps {
@@ -42,9 +41,9 @@ function StatRow({
           : 'text-txt-primary';
 
   return (
-    <div className="flex justify-between items-center py-1.5 border-b border-border/10 last:border-0">
+    <div className="flex justify-between items-center py-1.5 border-b border-border/5 last:border-0">
       <span className="text-xs text-txt-secondary">{label}</span>
-      <span className={`text-xs font-mono ${colorClass}`}>
+      <span className={`text-xs font-mono tabular-nums ${colorClass}`}>
         {value}
         {sentiment && (
           <span className="ml-1 text-[10px] opacity-70">{sentiment === 'positive' ? '▲' : '▼'}</span>
@@ -136,7 +135,15 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
     };
   }, [symbol]);
 
-  if (loading) return <LoadingSpinner text="Lade Fundamentaldaten..." />;
+  if (loading) {
+    return (
+      <div className="animate-slide-up space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-44 rounded-2xl skeleton-shimmer" />
+        ))}
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -160,9 +167,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
       {/* Company Profile */}
       {sp && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Building2 className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">Unternehmensprofil</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <Building2 className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">Unternehmensprofil</h3>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-3">
             {sp.sector && (
@@ -196,9 +205,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
 
       {/* Valuation */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <DollarSign className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold text-txt-primary">Bewertung</h3>
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="p-1.5 rounded-lg bg-accent/10">
+            <DollarSign className="w-4 h-4 text-accent" />
+          </div>
+          <h3 className="text-sm font-bold text-txt-primary">Bewertung</h3>
         </div>
         <StatRow label="Marktkapitalisierung" value={formatLargeNumber(sd?.marketCap)} />
         <StatRow label="KGV (Trailing)" value={formatRatio(sd?.trailingPE)} highlight />
@@ -213,9 +224,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
 
       {/* Financial Health */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <BarChart3 className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold text-txt-primary">Finanzkennzahlen</h3>
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="p-1.5 rounded-lg bg-accent/10">
+            <BarChart3 className="w-4 h-4 text-accent" />
+          </div>
+          <h3 className="text-sm font-bold text-txt-primary">Finanzkennzahlen</h3>
         </div>
         <StatRow label="Umsatz" value={formatLargeNumber(fd?.totalRevenue)} />
         <StatRow label="EBITDA" value={formatLargeNumber(fd?.ebitda)} />
@@ -233,9 +246,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
       {/* Dividends */}
       {(sd?.dividendYield || sd?.dividendRate) && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">Dividende</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <TrendingUp className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">Dividende</h3>
           </div>
           <StatRow label="Dividendenrendite" value={formatMarginPercent(sd.dividendYield)} highlight sentiment={sd.dividendYield ? 'positive' : undefined} />
           <StatRow label="Dividende/Aktie" value={fp(sd.dividendRate, cur)} />
@@ -246,9 +261,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
       {/* Analyst Targets */}
       {fd?.targetMeanPrice && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">Analysten-Ziel</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <TrendingUp className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">Analysten-Ziel</h3>
           </div>
           <StatRow label="Durchschn. Zielkurs" value={fp(fd.targetMeanPrice, cur)} highlight />
           <StatRow label="Höchstes Ziel" value={fp(fd.targetHighPrice, cur)} />
@@ -264,9 +281,11 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
       {/* Earnings Bar Chart */}
       {earnings?.financialsChart?.yearly && earnings.financialsChart.yearly.length > 0 && (
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <BarChart3 className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold text-txt-primary">Jährliche Finanzen</h3>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <BarChart3 className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-sm font-bold text-txt-primary">Jährliche Finanzen</h3>
           </div>
           <EarningsBarChart yearly={earnings.financialsChart.yearly} />
         </div>

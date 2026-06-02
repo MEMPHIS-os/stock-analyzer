@@ -30,6 +30,10 @@ interface QuoteForAlert {
   regularMarketChangePercent?: number;
   regularMarketVolume?: number;
   averageVolume?: number;
+  // Yahoo's real average-volume fields (no plain `averageVolume` is returned)
+  averageDailyVolume3Month?: number;
+  averageDailyVolume10Day?: number;
+  currency?: string;
 }
 
 const ALERTS_KEY = 'stockanalyzer_alerts';
@@ -54,7 +58,7 @@ function saveAlerts(alerts: PriceAlert[]) {
   localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts));
 }
 
-function describeAlert(alert: PriceAlert, locale: 'de' | 'en'): string {
+function describeAlert(alert: PriceAlert, locale: 'de' | 'en', currency = 'USD'): string {
   const de = locale === 'de';
   if (alert.kind === 'percentChange') {
     const dir = alert.condition === 'above' ? '≥' : '≤';
@@ -68,7 +72,7 @@ function describeAlert(alert: PriceAlert, locale: 'de' | 'en'): string {
       : `${alert.symbol} volume ≥ ${alert.targetMultiplier}× avg`;
   }
   const word = alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below');
-  return `${alert.symbol} ${word} ${formatPrice(alert.targetPrice ?? 0, 'USD', locale)}`;
+  return `${alert.symbol} ${word} ${formatPrice(alert.targetPrice ?? 0, currency, locale)}`;
 }
 
 export function useAlerts() {
@@ -151,7 +155,7 @@ export function useAlerts() {
             }
           } else if (alert.kind === 'volumeSpike' && alert.targetMultiplier != null) {
             const vol = quote.regularMarketVolume;
-            const avg = quote.averageVolume;
+            const avg = quote.averageVolume ?? quote.averageDailyVolume3Month ?? quote.averageDailyVolume10Day;
             if (vol != null && avg != null && avg > 0) {
               isTriggered = vol >= avg * alert.targetMultiplier;
             }
@@ -162,8 +166,9 @@ export function useAlerts() {
             if (!notifiedRef.current.has(alert.id)) {
               notifiedRef.current.add(alert.id);
               const title = locale === 'de' ? `Kursalarm: ${alert.symbol}` : `Alert: ${alert.symbol}`;
-              const body = describeAlert(alert, locale) +
-                `\n${locale === 'de' ? 'Aktueller Kurs' : 'Current price'}: ${formatPrice(quote.regularMarketPrice, 'USD', locale)}`;
+              const ccy = quote.currency || 'USD';
+              const body = describeAlert(alert, locale, ccy) +
+                `\n${locale === 'de' ? 'Aktueller Kurs' : 'Current price'}: ${formatPrice(quote.regularMarketPrice, ccy, locale)}`;
 
               const electronAPI = (window as unknown as { electronAPI?: { showNotification?: (t: string, b: string) => void } }).electronAPI;
               if (electronAPI?.showNotification) {

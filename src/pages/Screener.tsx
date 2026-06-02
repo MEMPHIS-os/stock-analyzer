@@ -5,7 +5,6 @@ import { useApp } from '../context';
 import { fetchScreener, type ScreenerStock } from '../api';
 import { formatPercent, formatLargeNumber, formatRatio } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 type AssetType = 'ALL' | 'EQUITY' | 'ETF' | 'MUTUALFUND';
 
@@ -153,15 +152,29 @@ export default function Screener() {
     );
   }
 
-  if (loading) return <LoadingSpinner text="Lade Screener..." />;
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="h-8 w-56 rounded-lg skeleton-shimmer" />
+        <div className="h-24 rounded-2xl skeleton-shimmer" />
+        <div className="card overflow-hidden">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="h-12 border-b border-border/5 last:border-0 skeleton-shimmer" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-2">
-        <SlidersHorizontal className="w-5 h-5 text-accent" />
-        <h2 className="text-lg font-bold text-txt-primary">Stock Screener</h2>
-        <span className="text-xs text-txt-muted ml-2">
-          {filtered.length} von {stocks.length} Aktien
+      <div className="flex items-center gap-2.5">
+        <div className="p-2 rounded-xl bg-accent/10">
+          <SlidersHorizontal className="w-5 h-5 text-accent" />
+        </div>
+        <h2 className="section-title text-xl">Stock Screener</h2>
+        <span className="text-xs text-txt-muted ml-1 bg-dark-700/40 px-2.5 py-1 rounded-full font-mono tabular-nums">
+          {filtered.length} / {stocks.length}
         </span>
       </div>
 
@@ -171,14 +184,14 @@ export default function Screener() {
           <button
             key={p.label}
             onClick={() => applyPreset(p.filters)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-dark-700 text-txt-secondary hover:text-txt-primary hover:bg-dark-600 border border-border/20 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-dark-700/60 text-txt-secondary hover:text-txt-primary hover:bg-accent/10 hover:ring-accent/20 ring-1 ring-border/10 transition-all duration-200"
           >
             {p.label}
           </button>
         ))}
         <button
           onClick={() => setFilters(DEFAULT_FILTERS)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium text-txt-muted hover:text-txt-primary hover:bg-dark-600 transition-colors flex items-center gap-1"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-txt-muted hover:text-txt-primary hover:bg-dark-600/40 transition-all duration-200 flex items-center gap-1.5"
         >
           <RotateCcw className="w-3 h-3" /> Reset
         </button>
@@ -187,8 +200,8 @@ export default function Screener() {
       {/* Filters */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-txt-secondary" />
-          <span className="text-sm font-medium text-txt-primary">Filter</span>
+          <Filter className="w-4 h-4 text-accent" />
+          <span className="text-xs font-semibold text-txt-primary uppercase tracking-wider">Filter</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           <div>
@@ -296,9 +309,9 @@ export default function Screener() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border/30 bg-dark-800">
+              <tr className="border-b border-border/10">
                 <th
-                  className="text-left px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary"
+                  className="text-left px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors"
                   onClick={() => toggleSort('symbol')}
                 >
                   <div className="flex items-center gap-1">
@@ -306,7 +319,7 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors"
                   onClick={() => toggleSort('price')}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -314,7 +327,7 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors"
                   onClick={() => toggleSort('changePercent')}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -322,7 +335,7 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary hidden md:table-cell"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors hidden md:table-cell"
                   onClick={() => toggleSort('marketCap')}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -330,7 +343,7 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary hidden lg:table-cell"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors hidden lg:table-cell"
                   onClick={() => toggleSort('pe')}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -338,7 +351,7 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary hidden lg:table-cell"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors hidden lg:table-cell"
                   onClick={() => toggleSort('dividendYield')}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -346,14 +359,14 @@ export default function Screener() {
                   </div>
                 </th>
                 <th
-                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-medium cursor-pointer hover:text-txt-primary hidden md:table-cell"
+                  className="text-right px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider cursor-pointer hover:text-txt-primary transition-colors hidden md:table-cell"
                   onClick={() => toggleSort('volume')}
                 >
                   <div className="flex items-center justify-end gap-1">
                     Volumen <SortIcon field="volume" />
                   </div>
                 </th>
-                <th className="text-left px-4 py-2.5 text-xs text-txt-muted font-medium hidden xl:table-cell">
+                <th className="text-left px-4 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider hidden xl:table-cell">
                   Sektor
                 </th>
               </tr>
@@ -363,41 +376,37 @@ export default function Screener() {
                 <tr
                   key={s.symbol}
                   onClick={() => navigate(`/stock/${s.symbol}`)}
-                  className="border-b border-border/10 last:border-0 hover:bg-dark-600/50 cursor-pointer transition-colors"
+                  className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] cursor-pointer transition-all duration-200 group"
                 >
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2.5">
                     <div>
-                      <span className="font-mono font-semibold text-accent">{s.symbol}</span>
+                      <span className="font-mono font-bold text-accent group-hover:text-accent-light transition-colors">{s.symbol}</span>
                       <span className="text-xs text-txt-muted ml-2 hidden sm:inline">
                         {s.shortName}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-txt-primary">
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-primary font-medium">
                     {fp(s.price, s.currency || 'USD')}
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    <span
-                      className={`font-mono text-xs ${
-                        s.changePercent >= 0 ? 'text-success' : 'text-danger'
-                      }`}
-                    >
+                  <td className="px-4 py-2.5 text-right">
+                    <span className={`text-xs font-mono font-semibold ${s.changePercent >= 0 ? 'badge-success' : 'badge-danger'}`}>
                       {formatPercent(s.changePercent)}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-txt-secondary hidden md:table-cell">
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-secondary hidden md:table-cell">
                     {formatLargeNumber(s.marketCap)}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-txt-secondary hidden lg:table-cell">
-                    {s.pe ? formatRatio(s.pe) : '--'}
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-secondary hidden lg:table-cell">
+                    {s.pe ? formatRatio(s.pe) : '—'}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-txt-secondary hidden lg:table-cell">
-                    {s.dividendYield ? (s.dividendYield * 100).toFixed(2) + '%' : '--'}
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-secondary hidden lg:table-cell">
+                    {s.dividendYield ? (s.dividendYield * 100).toFixed(2) + '%' : '—'}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-txt-secondary hidden md:table-cell">
+                  <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-secondary hidden md:table-cell">
                     {formatLargeNumber(s.volume)}
                   </td>
-                  <td className="px-4 py-2 text-xs text-txt-muted hidden xl:table-cell">
+                  <td className="px-4 py-2.5 text-xs text-txt-muted hidden xl:table-cell">
                     {s.sector}
                   </td>
                 </tr>

@@ -25,6 +25,7 @@ interface PortfolioQuote {
   price: number;
   change: number | null;
   changePercent: number | null;
+  currency: string;
 }
 
 // Risk analysis metrics
@@ -106,7 +107,7 @@ function buildDonutPath(
 
 export default function Portfolio() {
   const navigate = useNavigate();
-  const { locale } = useApp();
+  const { locale, convertPrice } = useApp();
   const { fp } = usePrice();
   const {
     holdings,
@@ -149,6 +150,7 @@ export default function Portfolio() {
               price: q.regularMarketPrice,
               change: q.regularMarketChange,
               changePercent: q.regularMarketChangePercent,
+              currency: q.currency || 'USD',
             };
           }
           setQuotes(map);
@@ -175,24 +177,31 @@ export default function Portfolio() {
   // Derived metrics
   // -----------------------------------------------------------------------
 
-  const totalValue = useMemo(() => {
-    return holdings.reduce((sum, h) => {
+  // Value every holding in a common display currency via convertPrice (USD↔EUR).
+  // A holding's native currency is its quote's listing currency; both the live
+  // price and the cost basis (avgPrice) are denominated in it.
+  const { totalValue, investedValue, dayChange, displayCcy } = useMemo(() => {
+    let tv = 0, iv = 0, dc = 0;
+    let ccy: string | null = null;
+    let mixed = false;
+    for (const h of holdings) {
       const q = quotes[h.symbol];
+      const cur = q?.currency || 'USD';
       const price = q?.price ?? h.avgPrice;
-      return sum + h.shares * price;
-    }, 0);
-  }, [holdings, quotes]);
+      const mv = convertPrice(h.shares * price, cur);
+      const cost = convertPrice(h.shares * h.avgPrice, cur);
+      const chg = convertPrice(h.shares * (q?.change ?? 0), cur);
+      tv += mv.value;
+      iv += cost.value;
+      dc += chg.value;
+      if (ccy === null) ccy = mv.currency;
+      else if (ccy !== mv.currency) mixed = true;
+    }
+    return { totalValue: tv, investedValue: iv, dayChange: dc, displayCcy: mixed ? 'USD' : (ccy ?? 'USD') };
+  }, [holdings, quotes, convertPrice]);
 
-  const totalPnl = totalValue - totalInvested;
-  const totalPnlPercent = totalInvested > 0 ? totalPnl / totalInvested : 0;
-
-  const dayChange = useMemo(() => {
-    return holdings.reduce((sum, h) => {
-      const q = quotes[h.symbol];
-      if (!q) return sum;
-      return sum + h.shares * (q.change ?? 0);
-    }, 0);
-  }, [holdings, quotes]);
+  const totalPnl = totalValue - investedValue;
+  const totalPnlPercent = investedValue > 0 ? totalPnl / investedValue : 0;
 
   const dayChangePercent = useMemo(() => {
     const prevValue = totalValue - dayChange;
@@ -208,14 +217,14 @@ export default function Portfolio() {
     return holdings.map((h, i) => {
       const q = quotes[h.symbol];
       const price = q?.price ?? h.avgPrice;
-      const marketValue = h.shares * price;
+      const marketValue = convertPrice(h.shares * price, q?.currency || 'USD').value;
       return {
         symbol: h.symbol,
         weight: marketValue / totalValue,
         color: DONUT_COLORS[i % DONUT_COLORS.length],
       };
     });
-  }, [holdings, quotes, totalValue]);
+  }, [holdings, quotes, totalValue, convertPrice]);
 
   // -----------------------------------------------------------------------
   // Risk analysis
@@ -520,13 +529,6 @@ export default function Portfolio() {
   const pnlColor = (value: number) =>
     value > 0 ? 'text-success' : value < 0 ? 'text-danger' : 'text-txt-muted';
 
-  const pnlIcon = (value: number) =>
-    value >= 0 ? (
-      <TrendingUp className="w-4 h-4 inline-block mr-1" />
-    ) : (
-      <TrendingDown className="w-4 h-4 inline-block mr-1" />
-    );
-
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
@@ -550,16 +552,16 @@ export default function Portfolio() {
       )}
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Briefcase className="w-7 h-7 text-accent" />
-          <h1 className="text-2xl font-bold text-txt-primary">
-            Portfolioübersicht
-          </h1>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-accent/10">
+            <Briefcase className="w-6 h-6 text-accent" />
+          </div>
+          <h1 className="section-title text-2xl">Portfolioübersicht</h1>
         </div>
         {holdings.length > 0 && (
           <button
             onClick={clearAll}
-            className="btn-ghost text-sm flex items-center gap-1 text-danger"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-danger hover:bg-danger/10 transition-all duration-200 active:scale-[0.97]"
           >
             <Trash2 className="w-4 h-4" />
             Alles löschen
@@ -571,47 +573,67 @@ export default function Portfolio() {
       {/* Summary cards                                                     */}
       {/* ----------------------------------------------------------------- */}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {/* Gesamtwert */}
-        <div className="card bg-dark-800 p-4 space-y-1">
-          <span className="text-xs text-txt-muted uppercase tracking-wide">
-            Gesamtwert
-          </span>
-          <p className="text-xl font-bold text-txt-primary font-mono">
-            {fp(totalValue, 'USD')}
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <DollarSign className="w-4 h-4 text-accent" />
+            </div>
+            <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+              Gesamtwert
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
+            {fp(totalValue, displayCcy)}
           </p>
         </div>
 
         {/* Investiert */}
-        <div className="card bg-dark-800 p-4 space-y-1">
-          <span className="text-xs text-txt-muted uppercase tracking-wide">
-            Investiert
-          </span>
-          <p className="text-xl font-bold text-txt-primary font-mono">
-            {fp(totalInvested, 'USD')}
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <Briefcase className="w-4 h-4 text-accent" />
+            </div>
+            <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+              Investiert
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
+            {fp(investedValue, displayCcy)}
           </p>
         </div>
 
         {/* Gewinn / Verlust */}
-        <div className="card bg-dark-800 p-4 space-y-1">
-          <span className="text-xs text-txt-muted uppercase tracking-wide">
-            Gewinn/Verlust
-          </span>
-          <p className={`text-xl font-bold font-mono ${pnlColor(totalPnl)}`}>
-            {pnlIcon(totalPnl)}
-            {fp(totalPnl, 'USD')} ({formatPercent(totalPnlPercent)})
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-lg ${totalPnl >= 0 ? 'bg-success/10' : 'bg-danger/10'}`}>
+              {totalPnl >= 0 ? <TrendingUp className="w-4 h-4 text-success" /> : <TrendingDown className="w-4 h-4 text-danger" />}
+            </div>
+            <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+              Gewinn/Verlust
+            </span>
+          </div>
+          <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(totalPnl)}`}>
+            {fp(totalPnl, displayCcy)}
           </p>
+          <p className={`text-xs font-mono font-semibold ${pnlColor(totalPnl)}`}>{formatPercent(totalPnlPercent * 100)}</p>
         </div>
 
         {/* Tagesveränderung */}
-        <div className="card bg-dark-800 p-4 space-y-1">
-          <span className="text-xs text-txt-muted uppercase tracking-wide">
-            Tagesveränderung
-          </span>
-          <p className={`text-xl font-bold font-mono ${pnlColor(dayChange)}`}>
-            {pnlIcon(dayChange)}
-            {fp(dayChange, 'USD')} ({formatPercent(dayChangePercent)})
+        <div className="card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-lg ${dayChange >= 0 ? 'bg-success/10' : 'bg-danger/10'}`}>
+              {dayChange >= 0 ? <TrendingUp className="w-4 h-4 text-success" /> : <TrendingDown className="w-4 h-4 text-danger" />}
+            </div>
+            <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+              Tagesveränderung
+            </span>
+          </div>
+          <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(dayChange)}`}>
+            {fp(dayChange, displayCcy)}
           </p>
+          <p className={`text-xs font-mono font-semibold ${pnlColor(dayChange)}`}>{formatPercent(dayChangePercent * 100)}</p>
         </div>
       </div>
 
@@ -622,12 +644,12 @@ export default function Portfolio() {
       {holdings.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Donut chart */}
-          <div className="card bg-dark-800 p-5 flex flex-col items-center justify-center lg:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <PieChart className="w-5 h-5 text-accent" />
-              <h2 className="text-lg font-semibold text-txt-primary">
-                Allokation
-              </h2>
+          <div className="card p-5 flex flex-col items-center justify-center lg:col-span-1">
+            <div className="flex items-center gap-2.5 mb-4 self-start">
+              <div className="p-1.5 rounded-lg bg-accent/10">
+                <PieChart className="w-5 h-5 text-accent" />
+              </div>
+              <h2 className="section-title text-lg">Allokation</h2>
             </div>
 
             <svg viewBox="0 0 200 200" className="w-48 h-48">
@@ -682,42 +704,48 @@ export default function Portfolio() {
             </svg>
 
             {/* Legend */}
-            <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <div className="mt-4 flex flex-wrap justify-center gap-2.5">
               {donutSegments.map((seg) => (
-                <div key={seg.symbol} className="flex items-center gap-1.5 text-xs text-txt-secondary">
+                <div key={seg.symbol} className="flex items-center gap-1.5 text-xs text-txt-secondary bg-dark-700/40 px-2 py-1 rounded-lg">
                   <span
                     className="inline-block w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: seg.color }}
                   />
-                  {seg.symbol} ({formatPercent(seg.weight)})
+                  <span className="font-mono font-medium text-txt-primary">{seg.symbol}</span>
+                  <span className="font-mono tabular-nums text-txt-muted">{formatPercent(seg.weight * 100)}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Holdings table */}
-          <div className="card bg-dark-800 p-5 lg:col-span-2 overflow-x-auto">
-            <h2 className="text-lg font-semibold text-txt-primary mb-4">
-              Bestände
-            </h2>
+          <div className="card lg:col-span-2 overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+              <div className="p-1.5 rounded-lg bg-accent/10">
+                <Briefcase className="w-5 h-5 text-accent" />
+              </div>
+              <h2 className="section-title text-lg">Bestände</h2>
+            </div>
 
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-txt-muted border-b border-dark-700">
-                  <th className="pb-2 pr-3">Aktie</th>
-                  <th className="pb-2 pr-3 text-right">Anteile</th>
-                  <th className="pb-2 pr-3 text-right">Ø Preis</th>
-                  <th className="pb-2 pr-3 text-right">Kurs</th>
-                  <th className="pb-2 pr-3 text-right">Marktwert</th>
-                  <th className="pb-2 pr-3 text-right">G/V</th>
-                  <th className="pb-2 pr-3 text-right">G/V (%)</th>
-                  <th className="pb-2 pr-3 text-right">Gewicht</th>
-                  <th className="pb-2"></th>
+                <tr className="border-b border-border/10">
+                  <th className="text-left px-5 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Aktie</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Anteile</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Ø Preis</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Kurs</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Marktwert</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">G/V</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">G/V (%)</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Gewicht</th>
+                  <th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {holdings.map((h) => {
                   const q = quotes[h.symbol];
+                  const cur = q?.currency || 'USD';
                   const currentPrice = q?.price ?? h.avgPrice;
                   const marketValue = h.shares * currentPrice;
                   const pnl = marketValue - h.shares * h.avgPrice;
@@ -725,46 +753,48 @@ export default function Portfolio() {
                     h.avgPrice !== 0
                       ? (currentPrice - h.avgPrice) / h.avgPrice
                       : 0;
-                  const weight = totalValue > 0 ? marketValue / totalValue : 0;
+                  const weight = totalValue > 0 ? convertPrice(marketValue, cur).value / totalValue : 0;
 
                   return (
                     <tr
                       key={h.id}
-                      className="border-b border-dark-700 hover:bg-dark-700/50 cursor-pointer transition-colors"
+                      className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] cursor-pointer transition-all duration-200 group"
                       onClick={() => navigate(`/stock/${h.symbol}`)}
                     >
-                      <td className="py-2.5 pr-3">
-                        <span className="font-semibold text-txt-primary">
+                      <td className="px-5 py-3">
+                        <span className="font-mono font-bold text-accent group-hover:text-accent-light transition-colors">
                           {h.symbol}
                         </span>
-                        <span className="block text-xs text-txt-muted truncate max-w-[140px]">
+                        <span className="block text-[11px] text-txt-muted truncate max-w-[140px]">
                           {h.name}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-txt-secondary">
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-secondary">
                         {h.shares}
                       </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-txt-secondary">
-                        {fp(h.avgPrice, 'USD')}
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-secondary">
+                        {fp(h.avgPrice, cur)}
                       </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-txt-primary">
-                        {quotesLoading && !q ? '...' : fp(currentPrice, 'USD')}
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-primary">
+                        {quotesLoading && !q ? '…' : fp(currentPrice, cur)}
                       </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-txt-primary">
-                        {fp(marketValue, 'USD')}
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-primary font-medium">
+                        {fp(marketValue, cur)}
                       </td>
-                      <td className={`py-2.5 pr-3 text-right font-mono ${pnlColor(pnl)}`}>
-                        {fp(pnl, 'USD')}
+                      <td className={`px-3 py-3 text-right font-mono tabular-nums font-medium ${pnlColor(pnl)}`}>
+                        {fp(pnl, cur)}
                       </td>
-                      <td className={`py-2.5 pr-3 text-right font-mono ${pnlColor(pnlPct)}`}>
-                        {formatPercent(pnlPct)}
+                      <td className="px-3 py-3 text-right">
+                        <span className={`text-xs font-mono font-semibold ${pnlPct >= 0 ? 'badge-success' : 'badge-danger'}`}>
+                          {formatPercent(pnlPct * 100)}
+                        </span>
                       </td>
-                      <td className="py-2.5 pr-3 text-right font-mono text-txt-muted">
-                        {formatPercent(weight)}
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-muted">
+                        {formatPercent(weight * 100)}
                       </td>
-                      <td className="py-2.5">
+                      <td className="px-3 py-3 text-right">
                         <button
-                          className="btn-ghost p-1 text-danger hover:bg-dark-700"
+                          className="p-1.5 rounded-lg text-txt-muted hover:text-danger hover:bg-danger/10 transition-all duration-200"
                           onClick={(e) => {
                             e.stopPropagation();
                             removeHolding(h.id);
@@ -779,11 +809,12 @@ export default function Portfolio() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="card bg-dark-800 p-12 text-center space-y-3">
-          <Briefcase className="w-12 h-12 mx-auto text-txt-muted" />
+        <div className="card p-12 text-center space-y-3">
+          <Briefcase className="w-12 h-12 mx-auto text-txt-muted/30" />
           <p className="text-txt-secondary">
             Noch keine Bestände vorhanden. Füge eine Transaktion hinzu, um zu
             beginnen.
@@ -796,12 +827,12 @@ export default function Portfolio() {
       {/* ----------------------------------------------------------------- */}
 
       {holdings.length > 0 && (
-        <div className="card bg-dark-800 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-accent" />
-            <h2 className="text-lg font-semibold text-txt-primary">
-              Risiko-Analyse
-            </h2>
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <ShieldAlert className="w-5 h-5 text-accent" />
+            </div>
+            <h2 className="section-title text-lg">Risiko-Analyse</h2>
           </div>
 
           {riskMetrics.loading ? (
@@ -809,27 +840,23 @@ export default function Portfolio() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-dark-700 rounded-lg p-4 animate-pulse space-y-2"
-                >
-                  <div className="h-3 w-20 bg-dark-600 rounded" />
-                  <div className="h-6 w-16 bg-dark-600 rounded" />
-                  <div className="h-2 w-28 bg-dark-600 rounded" />
-                </div>
+                  className="rounded-xl p-4 skeleton-shimmer h-[88px]"
+                />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {/* Sharpe Ratio */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   Sharpe Ratio
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.sharpeRatio >= 1
                       ? 'text-success'
                       : riskMetrics.sharpeRatio >= 0
-                        ? 'text-yellow-400'
+                        ? 'text-warning'
                         : 'text-danger'
                   }`}
                 >
@@ -841,16 +868,16 @@ export default function Portfolio() {
               </div>
 
               {/* Sortino Ratio */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   Sortino Ratio
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.sortinoRatio >= 1.5
                       ? 'text-success'
                       : riskMetrics.sortinoRatio >= 0
-                        ? 'text-yellow-400'
+                        ? 'text-warning'
                         : 'text-danger'
                   }`}
                 >
@@ -862,16 +889,16 @@ export default function Portfolio() {
               </div>
 
               {/* Max Drawdown */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   Max Drawdown
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.maxDrawdownPercent <= 0.1
                       ? 'text-success'
                       : riskMetrics.maxDrawdownPercent <= 0.2
-                        ? 'text-yellow-400'
+                        ? 'text-warning'
                         : 'text-danger'
                   }`}
                 >
@@ -883,16 +910,16 @@ export default function Portfolio() {
               </div>
 
               {/* VaR (95%) */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   VaR (95%)
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.valueAtRisk <= 0.02
                       ? 'text-success'
                       : riskMetrics.valueAtRisk <= 0.04
-                        ? 'text-yellow-400'
+                        ? 'text-warning'
                         : 'text-danger'
                   }`}
                 >
@@ -904,17 +931,17 @@ export default function Portfolio() {
               </div>
 
               {/* Beta */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   Beta
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.beta >= 0.8 && riskMetrics.beta <= 1.2
                       ? 'text-success'
                       : riskMetrics.beta > 1.5 || riskMetrics.beta < 0
                         ? 'text-danger'
-                        : 'text-yellow-400'
+                        : 'text-warning'
                   }`}
                 >
                   {riskMetrics.beta.toFixed(2)}
@@ -925,16 +952,16 @@ export default function Portfolio() {
               </div>
 
               {/* Volatilität */}
-              <div className="bg-dark-700 rounded-lg p-4">
-                <span className="text-xs text-txt-muted uppercase tracking-wide">
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
+                <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                   Volatilität
                 </span>
                 <p
-                  className={`text-lg font-bold font-mono mt-1 ${
+                  className={`text-xl font-bold font-mono tabular-nums mt-1 ${
                     riskMetrics.annualVolatility <= 0.15
                       ? 'text-success'
                       : riskMetrics.annualVolatility <= 0.25
-                        ? 'text-yellow-400'
+                        ? 'text-warning'
                         : 'text-danger'
                   }`}
                 >
@@ -953,13 +980,15 @@ export default function Portfolio() {
       {/* Add Transaction form (collapsible)                                */}
       {/* ----------------------------------------------------------------- */}
 
-      <div className="card bg-dark-800">
+      <div className="card overflow-hidden">
         <button
-          className="w-full flex items-center justify-between p-4 text-left"
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-dark-600/20 transition-colors duration-200"
           onClick={() => setFormOpen((o) => !o)}
         >
-          <div className="flex items-center gap-2">
-            <Plus className="w-5 h-5 text-accent" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <Plus className="w-5 h-5 text-accent" />
+            </div>
             <span className="font-semibold text-txt-primary">
               Transaktion hinzufügen
             </span>
@@ -993,14 +1022,14 @@ export default function Portfolio() {
               />
 
               {searchOpen && searchResults.length > 0 && (
-                <ul className="absolute z-20 mt-1 w-full bg-dark-700 border border-dark-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <ul className="absolute z-20 mt-1.5 w-full card border border-border/20 rounded-xl shadow-depth-lg max-h-48 overflow-y-auto py-1 animate-scale-in">
                   {searchResults.map((r) => (
                     <li
                       key={r.symbol}
-                      className="px-3 py-2 hover:bg-dark-900 cursor-pointer text-sm flex justify-between"
+                      className="px-3 py-2 hover:bg-dark-600/40 cursor-pointer text-sm flex justify-between transition-colors"
                       onMouseDown={() => selectSearchResult(r)}
                     >
-                      <span className="font-semibold text-txt-primary">
+                      <span className="font-mono font-bold text-accent">
                         {r.symbol}
                       </span>
                       <span className="text-txt-muted truncate ml-3 max-w-[60%]">
@@ -1022,10 +1051,10 @@ export default function Portfolio() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     formType === 'buy'
-                      ? 'bg-success/20 text-success'
-                      : 'bg-dark-700 text-txt-muted'
+                      ? 'bg-success/15 text-success ring-1 ring-success/25'
+                      : 'bg-dark-700/60 text-txt-muted hover:text-txt-secondary ring-1 ring-border/10'
                   }`}
                   onClick={() => setFormType('buy')}
                 >
@@ -1033,10 +1062,10 @@ export default function Portfolio() {
                 </button>
                 <button
                   type="button"
-                  className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     formType === 'sell'
-                      ? 'bg-danger/20 text-danger'
-                      : 'bg-dark-700 text-txt-muted'
+                      ? 'bg-danger/15 text-danger ring-1 ring-danger/25'
+                      : 'bg-dark-700/60 text-txt-muted hover:text-txt-secondary ring-1 ring-border/10'
                   }`}
                   onClick={() => setFormType('sell')}
                 >
@@ -1090,32 +1119,35 @@ export default function Portfolio() {
       {/* ----------------------------------------------------------------- */}
 
       {transactions.length > 0 && (
-        <div className="card bg-dark-800 p-5">
-          <h2 className="text-lg font-semibold text-txt-primary mb-4">
-            Letzte Transaktionen
-          </h2>
+        <div className="card p-5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <DollarSign className="w-5 h-5 text-accent" />
+            </div>
+            <h2 className="section-title text-lg">Letzte Transaktionen</h2>
+          </div>
 
-          <ul className="space-y-2">
+          <ul className="space-y-1">
             {transactions.slice(0, 10).map((tx) => (
               <li
                 key={tx.id}
-                className="flex items-center justify-between py-2 border-b border-dark-700 last:border-0 text-sm"
+                className="flex items-center justify-between py-2.5 px-2 -mx-2 rounded-lg border-b border-border/5 last:border-0 text-sm hover:bg-dark-600/20 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
                       tx.type === 'buy'
-                        ? 'bg-success/20 text-success'
-                        : 'bg-danger/20 text-danger'
+                        ? 'bg-success/15 text-success'
+                        : 'bg-danger/15 text-danger'
                     }`}
                   >
                     {tx.type === 'buy' ? 'Kauf' : 'Verkauf'}
                   </span>
-                  <span className="font-semibold text-txt-primary font-mono">
+                  <span className="font-mono font-bold text-accent">
                     {tx.symbol}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-txt-secondary font-mono">
+                <div className="flex items-center gap-4 text-txt-secondary font-mono tabular-nums">
                   <span>{tx.shares} Stk.</span>
                   <span>@ {fp(tx.price, 'USD')}</span>
                   <span className="text-txt-muted text-xs">

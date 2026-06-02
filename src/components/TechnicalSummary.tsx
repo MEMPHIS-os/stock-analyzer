@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Activity } from 'lucide-react';
 import {
   calculateSMA,
   calculateEMA,
@@ -155,7 +155,12 @@ export default function TechnicalSummary({ data }: TechnicalSummaryProps) {
     <div className="card p-4 animate-slide-up">
       {/* Overall Signal */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-txt-primary">Technische Analyse</h3>
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-accent/10">
+            <Activity className="w-4 h-4 text-accent" />
+          </div>
+          <h3 className="text-sm font-bold text-txt-primary">Technische Analyse</h3>
+        </div>
         <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${getSignalBg(overall)} ${getSignalColor(overall)}`}>
           {overall === 'buy' && <TrendingUp className="w-3.5 h-3.5" />}
           {overall === 'sell' && <TrendingDown className="w-3.5 h-3.5" />}
@@ -179,11 +184,11 @@ export default function TechnicalSummary({ data }: TechnicalSummaryProps) {
       {/* Individual signals */}
       <div className="space-y-0">
         {signals.map((s) => (
-          <div key={s.label} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
+          <div key={s.label} className="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg border-b border-border/5 last:border-0 hover:bg-dark-600/20 transition-colors">
             <span className="text-xs text-txt-secondary">{s.label}</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-txt-primary">{s.value}</span>
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getSignalBg(s.signal)} ${getSignalColor(s.signal)}`}>
+              <span className="text-xs font-mono tabular-nums text-txt-primary">{s.value}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${getSignalBg(s.signal)} ${getSignalColor(s.signal)}`}>
                 {s.signal === 'buy' ? 'KAUF' : s.signal === 'sell' ? 'VERK' : '—'}
               </span>
             </div>

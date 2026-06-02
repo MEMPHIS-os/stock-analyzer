@@ -10,6 +10,24 @@ const THEME_KEY = 'stockanalyzer_theme';
 const LOCALE_KEY = 'stockanalyzer_locale';
 const DISPLAY_CURRENCY_KEY = 'stockanalyzer_displaycurrency';
 const SPLIT_FLAP_KEY = 'stockanalyzer_splitflap';
+const ACCENT_KEY = 'stockanalyzer_accent';
+
+export type AccentColor = 'blue' | 'green' | 'violet' | 'amber';
+
+interface AccentDef {
+  label: string;
+  accent: string;   // hex
+  rgb: string;      // space-separated channels for rgb(var(--accent-rgb) / a)
+  hover: string;
+  light: string;
+}
+
+export const ACCENTS: Record<AccentColor, AccentDef> = {
+  blue:   { label: 'Blau',    accent: '#2962ff', rgb: '41 98 255',   hover: '#1e53e4', light: '#5c8aff' },
+  green:  { label: 'Grün',    accent: '#10b981', rgb: '16 185 129',  hover: '#059669', light: '#34d399' },
+  violet: { label: 'Violett', accent: '#7c4dff', rgb: '124 77 255',  hover: '#6a35f0', light: '#9d7bff' },
+  amber:  { label: 'Amber',   accent: '#f59e0b', rgb: '245 158 11',  hover: '#d97f06', light: '#fbbf24' },
+};
 
 const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', addedAt: Date.now() },
@@ -60,7 +78,7 @@ interface AppState {
   checkAlerts: (
     quotes: Record<
       string,
-      { regularMarketPrice: number; regularMarketChangePercent?: number; regularMarketVolume?: number; averageVolume?: number }
+      { regularMarketPrice: number; regularMarketChangePercent?: number; regularMarketVolume?: number; averageVolume?: number; averageDailyVolume3Month?: number; averageDailyVolume10Day?: number; currency?: string }
     >,
     locale?: 'de' | 'en'
   ) => void;
@@ -81,6 +99,9 @@ interface AppState {
   // Split-flap (Solari) display style
   splitFlapEnabled: boolean;
   toggleSplitFlap: () => void;
+  // Accent color theme
+  accent: AccentColor;
+  setAccent: (accent: AccentColor) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -125,6 +146,14 @@ function loadSplitFlap(): boolean {
   return false;
 }
 
+function loadAccent(): AccentColor {
+  try {
+    const stored = localStorage.getItem(ACCENT_KEY);
+    if (stored && stored in ACCENTS) return stored as AccentColor;
+  } catch {}
+  return 'blue';
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(loadWatchlist);
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
@@ -138,6 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(loadDisplayCurrency);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [splitFlapEnabled, setSplitFlapEnabled] = useState<boolean>(loadSplitFlap);
+  const [accent, setAccentState] = useState<AccentColor>(loadAccent);
 
   // Use alerts hook
   const {
@@ -159,6 +189,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  // Apply accent color CSS variables to DOM
+  useEffect(() => {
+    const def = ACCENTS[accent] ?? ACCENTS.blue;
+    const root = document.documentElement;
+    root.style.setProperty('--accent', def.accent);
+    root.style.setProperty('--accent-rgb', def.rgb);
+    root.style.setProperty('--accent-hover', def.hover);
+    root.style.setProperty('--accent-light', def.light);
+    localStorage.setItem(ACCENT_KEY, accent);
+  }, [accent]);
+
+  const setAccent = useCallback((next: AccentColor) => setAccentState(next), []);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -352,6 +395,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         exchangeRate,
         splitFlapEnabled,
         toggleSplitFlap,
+        accent,
+        setAccent,
       }}
     >
       {children}

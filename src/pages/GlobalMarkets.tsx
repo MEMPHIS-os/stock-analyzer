@@ -14,7 +14,6 @@ import { fetchGlobalMarkets, fetchSparklines } from '../api';
 import type { GlobalMarketIndex } from '../api';
 import { formatPercent } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 // ─── Market Hours per Index Symbol ───
 
@@ -204,20 +203,38 @@ export default function GlobalMarkets() {
     };
   }, []);
 
-  if (loading) return <LoadingSpinner text={t('general.loading')} />;
+  if (loading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="h-8 w-48 rounded-lg skeleton-shimmer" />
+        {Array.from({ length: 2 }).map((_, r) => (
+          <div key={r} className="space-y-3">
+            <div className="h-6 w-40 rounded-lg skeleton-shimmer" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-28 rounded-2xl skeleton-shimmer" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Globe className="w-6 h-6 text-accent" />
-          <h1 className="text-xl font-bold text-txt-primary">{t('globalMarkets.title')}</h1>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-accent/10">
+            <Globe className="w-5 h-5 text-accent" />
+          </div>
+          <h1 className="section-title text-xl">{t('globalMarkets.title')}</h1>
         </div>
         {lastUpdated && (
-          <div className="flex items-center gap-1.5 text-xs text-txt-muted">
+          <div className="flex items-center gap-1.5 text-xs text-txt-muted bg-dark-700/40 px-2.5 py-1 rounded-full">
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>
+            <span className="font-mono tabular-nums">
               {lastUpdated.toLocaleTimeString(locale === 'de' ? 'de-DE' : 'en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -237,9 +254,9 @@ export default function GlobalMarkets() {
           <div key={region.key}>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-lg">{region.emoji}</span>
-              <h2 className="text-lg font-bold text-txt-primary">{t(region.i18nKey)}</h2>
+              <h2 className="section-title text-lg">{t(region.i18nKey)}</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children">
               {indices.map((idx) => {
                 const isPositive = idx.change >= 0;
                 const sparkData = sparklines[idx.symbol] || [];
@@ -251,18 +268,18 @@ export default function GlobalMarkets() {
                 return (
                   <div
                     key={idx.symbol}
-                    className="card p-4 hover:bg-dark-600/30 cursor-pointer transition-colors"
+                    className="card p-4 cursor-pointer group"
                     onClick={() => navigate(`/stock/${idx.symbol}`)}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-txt-primary">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-semibold text-txt-primary truncate">
                           {idx.shortName}
                         </span>
                         {idx.marketState && (
                           <span
-                            className={`w-2 h-2 rounded-full ${
-                              isOpen ? 'bg-success' : 'bg-txt-muted'
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              isOpen ? 'bg-success animate-pulse' : 'bg-txt-muted'
                             }`}
                             title={
                               isOpen
@@ -272,14 +289,16 @@ export default function GlobalMarkets() {
                           />
                         )}
                       </div>
-                      {isPositive ? (
-                        <ArrowUpRight className="w-4 h-4 text-success" />
-                      ) : (
-                        <ArrowDownRight className="w-4 h-4 text-danger" />
-                      )}
+                      <div className={`flex items-center justify-center w-6 h-6 rounded-lg shrink-0 transition-colors duration-200 ${isPositive ? 'bg-success/10 group-hover:bg-success/20' : 'bg-danger/10 group-hover:bg-danger/20'}`}>
+                        {isPositive ? (
+                          <ArrowUpRight className="w-3.5 h-3.5 text-success" />
+                        ) : (
+                          <ArrowDownRight className="w-3.5 h-3.5 text-danger" />
+                        )}
+                      </div>
                     </div>
 
-                    <div className="text-lg font-bold font-mono text-txt-primary">
+                    <div className="text-lg font-bold font-mono tabular-nums text-txt-primary tracking-tight">
                       {fp(idx.price, idx.currency)}
                     </div>
 
@@ -291,7 +310,7 @@ export default function GlobalMarkets() {
                           <TrendingDown className="w-3.5 h-3.5 text-danger" />
                         )}
                         <span
-                          className={`text-sm font-mono ${
+                          className={`text-sm font-mono tabular-nums font-medium ${
                             isPositive ? 'text-success' : 'text-danger'
                           }`}
                         >

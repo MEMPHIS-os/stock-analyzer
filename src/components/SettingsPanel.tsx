@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid } from 'lucide-react';
-import { useApp } from '../context';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette } from 'lucide-react';
+import { useApp, ACCENTS, type AccentColor } from '../context';
 import { SplitFlap } from './SplitFlap';
+
+const ACCENT_LABELS_EN: Record<AccentColor, string> = {
+  blue: 'Blue', green: 'Green', violet: 'Violet', amber: 'Amber',
+};
 
 const SHORTCUTS = [
   { keys: 'Ctrl+K', de: 'Aktie suchen', en: 'Search stock' },
@@ -27,6 +31,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     toggleDisplayCurrency,
     splitFlapEnabled,
     toggleSplitFlap,
+    accent,
+    setAccent,
   } = useApp();
   const de = locale === 'de';
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -118,6 +124,45 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <Sun className="w-4 h-4" />
                 <span className="text-sm font-medium">Light</span>
               </button>
+            </div>
+          </div>
+
+          {/* Accent color */}
+          <div>
+            <label className="text-[11px] text-txt-muted font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <Palette className="w-3.5 h-3.5" />
+              {de ? 'Akzentfarbe' : 'Accent Color'}
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {(Object.keys(ACCENTS) as AccentColor[]).map((key) => {
+                const def = ACCENTS[key];
+                const active = accent === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setAccent(key)}
+                    className={`flex flex-col items-center gap-2 py-2.5 rounded-xl border transition-all duration-200 ${
+                      active
+                        ? 'border-accent/40 shadow-glow-sm'
+                        : 'border-border/10 hover:border-border/30 hover:bg-dark-700/30'
+                    }`}
+                    style={{ background: 'var(--glass-bg)' }}
+                    title={de ? def.label : ACCENT_LABELS_EN[key]}
+                  >
+                    <span
+                      className="w-6 h-6 rounded-full ring-2 ring-white/10 transition-transform duration-200"
+                      style={{
+                        background: def.accent,
+                        transform: active ? 'scale(1.1)' : 'scale(1)',
+                        boxShadow: active ? `0 0 12px -2px ${def.accent}` : 'none',
+                      }}
+                    />
+                    <span className={`text-[11px] font-medium ${active ? 'text-accent' : 'text-txt-secondary'}`}>
+                      {de ? def.label : ACCENT_LABELS_EN[key]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
