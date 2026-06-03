@@ -17,6 +17,7 @@ import { fetchQuotes, fetchSparklines } from '../api';
 import { formatPercent } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import { SkeletonCard } from '../components/Skeleton';
+import { Price } from '../components/Price';
 import type { QuoteData } from '../types';
 
 // ─── Curated fund universe by category ───
@@ -354,7 +355,7 @@ export default function Funds() {
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <div className="text-xl font-bold font-mono text-txt-primary">
-                      {quote ? fp(quote.regularMarketPrice, quote.currency) : '—'}
+                      {quote ? <Price value={quote.regularMarketPrice} currency={quote.currency} size={18} /> : '—'}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       {quote && (

@@ -11,11 +11,12 @@ import {
   Building2,
   Activity,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { formatChange, formatPercent, formatLargeNumber, formatVolume } from '../formatters';
 import { useApp } from '../context';
-import { usePrice } from '../hooks/usePrice';
 import { useContextMenu } from '../hooks/useContextMenu';
 import StockContextMenu from './ContextMenu';
+import { Price } from './Price';
 import { useNavigate } from 'react-router-dom';
 import type { QuoteData } from '../types';
 
@@ -26,21 +27,23 @@ interface StockOverviewProps {
 export default function StockOverview({ quote }: StockOverviewProps) {
   const { isInWatchlist, addToWatchlist, removeFromWatchlist, addCompareSymbol, showToast, t } =
     useApp();
-  const { fp } = usePrice();
   const navigate = useNavigate();
   const { contextMenu, openContextMenu, closeContextMenu } = useContextMenu();
   const inWatchlist = isInWatchlist(quote.symbol);
   const isPositive = quote.regularMarketChange >= 0;
   const cur = quote.currency || 'USD';
 
-  const stats: { label: string; value: string; icon: typeof TrendingUp }[] = [
-    { label: 'Eröffnung', value: fp(quote.regularMarketOpen, cur), icon: Activity },
-    { label: 'Tageshoch', value: fp(quote.regularMarketDayHigh, cur), icon: ArrowUp },
-    { label: 'Tagestief', value: fp(quote.regularMarketDayLow, cur), icon: ArrowDown },
+  const sf = (v: number | undefined | null): ReactNode => (
+    <Price value={v} currency={cur} size={13} />
+  );
+  const stats: { label: string; value: ReactNode; icon: typeof TrendingUp }[] = [
+    { label: 'Eröffnung', value: sf(quote.regularMarketOpen), icon: Activity },
+    { label: 'Tageshoch', value: sf(quote.regularMarketDayHigh), icon: ArrowUp },
+    { label: 'Tagestief', value: sf(quote.regularMarketDayLow), icon: ArrowDown },
     { label: 'Volumen', value: formatVolume(quote.regularMarketVolume), icon: BarChart3 },
-    { label: 'Vortag', value: fp(quote.regularMarketPreviousClose, cur), icon: Clock },
-    { label: '52W Hoch', value: fp(quote.fiftyTwoWeekHigh, cur), icon: TrendingUp },
-    { label: '52W Tief', value: fp(quote.fiftyTwoWeekLow, cur), icon: TrendingDown },
+    { label: 'Vortag', value: sf(quote.regularMarketPreviousClose), icon: Clock },
+    { label: '52W Hoch', value: sf(quote.fiftyTwoWeekHigh), icon: TrendingUp },
+    { label: '52W Tief', value: sf(quote.fiftyTwoWeekLow), icon: TrendingDown },
     { label: 'Marktkapit.', value: formatLargeNumber(quote.marketCap), icon: Building2 },
   ];
 
@@ -61,9 +64,12 @@ export default function StockOverview({ quote }: StockOverviewProps) {
             {quote.shortName || quote.longName}
           </p>
           <div className="flex items-baseline gap-3 flex-wrap">
-            <span className="text-3xl sm:text-4xl font-bold font-mono text-txt-primary tabular-nums tracking-tight">
-              {fp(quote.regularMarketPrice, cur)}
-            </span>
+            <Price
+              value={quote.regularMarketPrice}
+              currency={cur}
+              size={30}
+              className="text-3xl sm:text-4xl font-bold font-mono text-txt-primary tabular-nums tracking-tight"
+            />
             <div
               className={`flex items-center gap-2 px-2.5 py-1 rounded-xl ${
                 isPositive ? 'bg-success/10 ring-1 ring-success/15' : 'bg-danger/10 ring-1 ring-danger/15'

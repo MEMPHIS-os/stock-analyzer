@@ -5,6 +5,7 @@ import { useApp } from '../context';
 import { fetchScreener, type ScreenerStock } from '../api';
 import { formatPercent, formatLargeNumber, formatRatio } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
+import { Price } from '../components/Price';
 
 type AssetType = 'ALL' | 'EQUITY' | 'ETF' | 'MUTUALFUND';
 
@@ -387,7 +388,7 @@ export default function Screener() {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right font-mono tabular-nums text-txt-primary font-medium">
-                    {fp(s.price, s.currency || 'USD')}
+                    <Price value={s.price} currency={s.currency || 'USD'} size={12} flapClassName="justify-end" />
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <span className={`text-xs font-mono font-semibold ${s.changePercent >= 0 ? 'badge-success' : 'badge-danger'}`}>

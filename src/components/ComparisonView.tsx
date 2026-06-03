@@ -7,6 +7,7 @@ import { fetchChart, fetchQuote, searchSymbols } from '../api';
 import { formatPercent } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import LoadingSpinner from './LoadingSpinner';
+import { Price } from './Price';
 import type { OHLCVData, TimeRange, SearchResult } from '../types';
 import type { Theme } from '../context';
 
@@ -358,10 +359,10 @@ export default function ComparisonView() {
                       </span>
                     </td>
                     <td className="px-4 py-2 text-right font-mono text-txt-secondary">
-                      {first != null ? fp(first, symbolsData[i]?.currency || 'USD') : '—'}
+                      {first != null ? <Price value={first} currency={symbolsData[i]?.currency || 'USD'} size={12} flapClassName="justify-end" /> : '—'}
                     </td>
                     <td className="px-4 py-2 text-right font-mono text-txt-primary">
-                      {last != null ? fp(last, symbolsData[i]?.currency || 'USD') : '—'}
+                      {last != null ? <Price value={last} currency={symbolsData[i]?.currency || 'USD'} size={12} flapClassName="justify-end" /> : '—'}
                     </td>
                   </tr>
                 );

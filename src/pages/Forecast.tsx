@@ -31,6 +31,7 @@ import {
 import { formatPercent } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { Price } from '../components/Price';
 import type { OHLCVData, QuoteData, FundamentalsData } from '../types';
 
 // ─── Forecast calculation utilities ───
@@ -810,9 +811,9 @@ function PriceTargetBar({
         />
       </div>
       <div className="flex justify-between text-[10px] text-txt-secondary">
-        <span>{fp(low, currency)}</span>
-        {mean && <span className="text-accent font-medium">{fp(mean, currency)}</span>}
-        <span>{fp(high, currency)}</span>
+        <Price value={low} currency={currency} size={11} />
+        {mean && <Price value={mean} currency={currency} size={11} tone="accent" className="text-accent font-medium" />}
+        <Price value={high} currency={currency} size={11} />
       </div>
     </div>
   );
@@ -1024,15 +1025,15 @@ function ForecastContent({
                 <tr key={row.label} className="border-b border-border/10 last:border-0">
                   <td className="px-4 py-2.5 text-txt-primary font-medium">{row.label}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <span className="text-danger font-mono">{fp(row.low, currency)}</span>
+                    <Price value={row.low} currency={currency} size={12} tone="negative" className="text-danger font-mono" flapClassName="justify-end" />
                     <span className="text-[10px] text-txt-muted ml-1">({formatPercent(((row.low - forecast.currentPrice) / forecast.currentPrice) * 100)})</span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <span className="text-accent font-mono font-medium">{fp(row.mid, currency)}</span>
+                    <Price value={row.mid} currency={currency} size={12} tone="accent" className="text-accent font-mono font-medium" flapClassName="justify-end" />
                     <span className="text-[10px] text-txt-muted ml-1">({formatPercent(((row.mid - forecast.currentPrice) / forecast.currentPrice) * 100)})</span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <span className="text-success font-mono">{fp(row.high, currency)}</span>
+                    <Price value={row.high} currency={currency} size={12} tone="positive" className="text-success font-mono" flapClassName="justify-end" />
                     <span className="text-[10px] text-txt-muted ml-1">({formatPercent(((row.high - forecast.currentPrice) / forecast.currentPrice) * 100)})</span>
                   </td>
                 </tr>
@@ -1061,7 +1062,7 @@ function ForecastContent({
               <div className="flex items-center gap-3 py-1.5 px-3 bg-accent/10 rounded-lg border border-accent/20">
                 <span className="text-xs font-bold text-accent w-8">{de ? 'Kurs' : 'Price'}</span>
                 <div className="flex-1 h-0.5 bg-accent/30 rounded" />
-                <span className="text-sm font-mono font-bold text-accent">{fp(forecast.currentPrice, currency)}</span>
+                <Price value={forecast.currentPrice} currency={currency} size={14} tone="accent" className="text-sm font-mono font-bold text-accent" />
               </div>
               {forecast.supportLevels.map((level, i) => (
                 <LevelRow key={`s-${i}`} label={`S${i + 1}`} price={level} current={forecast.currentPrice} type="support" currency={currency} locale={locale} />
@@ -1390,7 +1391,7 @@ function ProjectionRow({
     <div className="flex items-center justify-between">
       <span className="text-xs text-txt-secondary">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-xs font-mono text-txt-primary">{fp(value, currency)}</span>
+        <Price value={value} currency={currency} size={12} className="text-xs font-mono text-txt-primary" />
         <span className={`text-[10px] font-medium ${isPositive ? 'text-success' : 'text-danger'}`}>
           {isPositive ? '+' : ''}{change.toFixed(1)}%
         </span>
@@ -1414,7 +1415,7 @@ function LevelRow({
     <div className={`flex items-center gap-3 py-1.5 px-3 rounded-lg border ${bgColor}`}>
       <span className={`text-xs font-bold w-8 ${color}`}>{label}</span>
       <div className={`flex-1 h-0.5 ${type === 'support' ? 'bg-success/20' : 'bg-danger/20'} rounded`} />
-      <span className={`text-sm font-mono ${color}`}>{fp(price, currency)}</span>
+      <Price value={price} currency={currency} size={13} tone={type === 'support' ? 'positive' : 'negative'} className={`text-sm font-mono ${color}`} />
       <span className="text-[10px] text-txt-muted">({diff > 0 ? '+' : ''}{diff.toFixed(1)}%)</span>
     </div>
   );

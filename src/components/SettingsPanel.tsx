@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette } from 'lucide-react';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette, Coins } from 'lucide-react';
 import { useApp, ACCENTS, type AccentColor } from '../context';
 import { SplitFlap } from './SplitFlap';
 
@@ -225,8 +225,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                     : 'border-border/10 text-txt-secondary hover:border-border/30 hover:bg-dark-700/30'
                 }`}
                 style={displayCurrency !== 'native' ? { background: 'var(--glass-bg)' } : {}}
+                title={de ? 'Jede Aktie in ihrer Heimatwährung' : 'Each stock in its native currency'}
               >
-                <span className="text-base font-bold">$</span>
+                <Coins className="w-4 h-4" />
                 <span className="text-sm font-medium">Original</span>
               </button>
             </div>

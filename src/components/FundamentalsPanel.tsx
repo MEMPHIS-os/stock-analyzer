@@ -6,8 +6,10 @@ import {
   formatRatio,
   formatMarginPercent,
 } from '../formatters';
+import type { ReactNode } from 'react';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
+import { Price } from './Price';
 import type { FundamentalsData } from '../types';
 
 interface FundamentalsPanelProps {
@@ -27,7 +29,7 @@ function StatRow({
   sentiment,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   highlight?: boolean;
   sentiment?: 'positive' | 'negative';
 }) {
@@ -253,7 +255,7 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
             <h3 className="text-sm font-bold text-txt-primary">Dividende</h3>
           </div>
           <StatRow label="Dividendenrendite" value={formatMarginPercent(sd.dividendYield)} highlight sentiment={sd.dividendYield ? 'positive' : undefined} />
-          <StatRow label="Dividende/Aktie" value={fp(sd.dividendRate, cur)} />
+          <StatRow label="Dividende/Aktie" value={<Price value={sd.dividendRate} currency={cur} size={12} />} />
           <StatRow label="Ausschüttungsquote" value={formatMarginPercent(sd.payoutRatio)} />
         </div>
       )}
@@ -267,9 +269,9 @@ export default function FundamentalsPanel({ symbol, currency }: FundamentalsPane
             </div>
             <h3 className="text-sm font-bold text-txt-primary">Analysten-Ziel</h3>
           </div>
-          <StatRow label="Durchschn. Zielkurs" value={fp(fd.targetMeanPrice, cur)} highlight />
-          <StatRow label="Höchstes Ziel" value={fp(fd.targetHighPrice, cur)} />
-          <StatRow label="Niedrigstes Ziel" value={fp(fd.targetLowPrice, cur)} />
+          <StatRow label="Durchschn. Zielkurs" value={<Price value={fd.targetMeanPrice} currency={cur} size={12} tone="accent" />} highlight />
+          <StatRow label="Höchstes Ziel" value={<Price value={fd.targetHighPrice} currency={cur} size={12} />} />
+          <StatRow label="Niedrigstes Ziel" value={<Price value={fd.targetLowPrice} currency={cur} size={12} />} />
           <StatRow label="Empfehlung" value={fd.recommendationKey?.toUpperCase() || '—'} />
           <StatRow
             label="Anzahl Analysten"

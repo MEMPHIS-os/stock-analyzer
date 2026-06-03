@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import {
   FlaskConical,
   Search,
@@ -26,6 +26,7 @@ import {
 import { usePrice } from '../hooks/usePrice';
 import { formatPercent } from '../formatters';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { Price } from '../components/Price';
 import type { OHLCVData, TimeRange } from '../types';
 
 // ─── Types ───
@@ -929,7 +930,7 @@ export default function Backtesting() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <MetricCard
                 label={de ? 'Endkapital' : 'Final Capital'}
-                value={fp(result.finalCapital, currency)}
+                value={<Price value={result.finalCapital} currency={currency} size={16} tone={result.totalReturn >= 0 ? 'positive' : 'negative'} />}
                 positive={result.totalReturn >= 0}
               />
               <MetricCard
@@ -1098,7 +1099,7 @@ export default function Backtesting() {
                             {formatTradeDate(trade.date, locale)}
                           </td>
                           <td className="px-4 py-2.5 text-right text-txt-primary font-mono">
-                            {fp(trade.price, currency)}
+                            <Price value={trade.price} currency={currency} size={12} flapClassName="justify-end" />
                           </td>
                           <td className="px-4 py-2.5 text-right text-txt-primary font-mono">
                             {trade.shares}
@@ -1359,7 +1360,7 @@ function MetricCard({
   positive,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   positive?: boolean;
 }) {
   const colorClass =

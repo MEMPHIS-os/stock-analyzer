@@ -14,6 +14,7 @@ import { formatPercent, formatLargeNumber } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import { useApp } from '../context';
 import LoadingSpinner from './LoadingSpinner';
+import { Price } from './Price';
 
 type SortKey = 'changePercent' | 'marketCap' | 'shortName' | 'pe' | 'dividendYield';
 type SortDir = 'asc' | 'desc';
@@ -274,7 +275,7 @@ export default function IndexConstituents({ indexSymbol }: Props) {
                       <span className="text-xs text-txt-primary truncate max-w-[180px] inline-block">{s.shortName}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <span className="text-xs font-mono text-txt-primary">{fp(s.price, s.currency)}</span>
+                      <Price value={s.price} currency={s.currency} size={12} className="text-xs font-mono text-txt-primary" flapClassName="justify-end" />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className={`inline-flex items-center gap-0.5 text-xs font-mono font-medium px-1.5 py-0.5 rounded ${
