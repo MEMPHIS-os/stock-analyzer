@@ -14,6 +14,7 @@ import { fetchGlobalMarkets, fetchSparklines } from '../api';
 import type { GlobalMarketIndex } from '../api';
 import { formatPercent } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
+import { Price } from '../components/Price';
 
 // ─── Market Hours per Index Symbol ───
 
@@ -299,7 +300,7 @@ export default function GlobalMarkets() {
                     </div>
 
                     <div className="text-lg font-bold font-mono tabular-nums text-txt-primary tracking-tight">
-                      {fp(idx.price, idx.currency)}
+                      <Price value={idx.price} currency={idx.currency} size={16} />
                     </div>
 
                     <div className="flex items-center justify-between mt-1">

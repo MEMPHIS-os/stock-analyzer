@@ -541,7 +541,15 @@
 .split-flap {
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  /* Lighter housing so the black tiles read against the dark background */
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.13),
+    inset 0 1px 2px rgba(0, 0, 0, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.45);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   vertical-align: middle;
@@ -556,23 +564,41 @@
   border-radius: 2px;
   background: #0a0a0a;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 1px 2px rgba(0, 0, 0, 0.6),
-    0 1px 0 rgba(0, 0, 0, 0.5);
-  font-family: 'Helvetica Neue', 'Arial Narrow', sans-serif;
-  font-weight: 700;
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.7),
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.24);
+  font-family: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, monospace;
+  font-weight: 800;
   font-size: var(--flap-fs, 14px);
   line-height: 1;
   overflow: hidden;
-  color: #f5f5f0;
+  color: #faf6ea;
   user-select: none;
 }
 
-/* Separators are slimmer */
+/* Separators (currency symbol, comma, dot, space, sign) are printed
+   statically between the flaps — no tile, no seam, no flip. */
 .split-flap-char-sep {
-  width: calc(var(--flap-w, 11px) * 0.55);
+  width: auto;
+  min-width: calc(var(--flap-w, 11px) * 0.42);
   background: transparent;
   box-shadow: none;
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1px;
+}
+
+.split-flap-sep-glyph {
+  font-size: calc(var(--flap-fs, 14px) * 0.92);
+  line-height: 1;
+  font-weight: 700;
+  color: rgba(250, 246, 234, 0.82);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+  white-space: pre;
 }
 
 .split-flap-half {
@@ -601,21 +627,25 @@
   position: absolute;
   left: 0;
   right: 0;
+  height: 200%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: var(--flap-fs, 14px);
   line-height: 1;
   text-align: center;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
 
+/* Glyph spans the full tile height and is centered on the hinge line.
+   Top half anchors the glyph at the tile top; bottom half lifts it by one
+   half-tile so both halves render the same vertically-centred character. */
 .split-flap-top .split-flap-glyph {
   top: 0;
-  height: 200%;
 }
 
 .split-flap-bottom .split-flap-glyph {
-  bottom: 0;
-  height: 200%;
-  transform: translateY(-50%);
+  top: -100%;
 }
 
 /* Animated flap halves */
@@ -649,13 +679,10 @@
 
 .split-flap-flap-top .split-flap-glyph {
   top: 0;
-  height: 200%;
 }
 
 .split-flap-flap-bottom .split-flap-glyph {
-  bottom: 0;
-  height: 200%;
-  transform: translateY(-50%);
+  top: -100%;
 }
 
 /* Center hinge (subtle highlight) */
@@ -681,10 +708,10 @@
 }
 
 /* Tone variants — affects glyph color */
-.split-flap-tone-positive .split-flap-glyph { color: #6ee7b7; }
-.split-flap-tone-negative .split-flap-glyph { color: #fca5a5; }
-.split-flap-tone-accent   .split-flap-glyph { color: #93c5fd; }
-.split-flap-tone-neutral  .split-flap-glyph { color: #f0ead6; }
+.split-flap-tone-positive .split-flap-glyph { color: #7df0c0; }
+.split-flap-tone-negative .split-flap-glyph { color: #ffb1b1; }
+.split-flap-tone-accent   .split-flap-glyph { color: #a8cdff; }
+.split-flap-tone-neutral  .split-flap-glyph { color: #faf6ea; }
 
 [data-theme="light"] .split-flap-char {
   background: #18181b;

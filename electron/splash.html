@@ -69,27 +69,70 @@
   <div class="logo-container">
     <svg class="logo-icon" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#131722"/>
-          <stop offset="100%" stop-color="#1e222d"/>
+        <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0%" stop-color="#1c2438"/>
+          <stop offset="55%" stop-color="#121724"/>
+          <stop offset="100%" stop-color="#0a0d14"/>
         </linearGradient>
-        <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="#2962ff"/>
-          <stop offset="100%" stop-color="#5b8def"/>
+        <linearGradient id="line" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1e6bff"/>
+          <stop offset="60%" stop-color="#3d8bff"/>
+          <stop offset="100%" stop-color="#7db4ff"/>
         </linearGradient>
+        <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2e7bff" stop-opacity="0.42"/>
+          <stop offset="100%" stop-color="#2e7bff" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+          <stop offset="45%" stop-color="#ffffff" stop-opacity="0.05"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <clipPath id="tile"><rect width="256" height="256" rx="56"/></clipPath>
       </defs>
-      <rect width="256" height="256" rx="48" fill="url(#bg)"/>
-      <path d="M40 180 L75 155 L110 165 L145 120 L180 90 L215 60 L215 200 L40 200 Z" fill="rgba(41,98,255,0.15)"/>
-      <polyline points="40,180 75,155 110,165 145,120 180,90 215,60" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="215" cy="60" r="8" fill="#2962ff"/>
-      <circle cx="215" cy="60" r="4" fill="#ffffff"/>
+      <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+      <g clip-path="url(#tile)">
+        <g opacity="0.85">
+          <rect x="40"  y="196" width="15" height="26" rx="3" fill="#1f9d83" opacity="0.55"/>
+          <rect x="64"  y="190" width="15" height="32" rx="3" fill="#22a98d" opacity="0.6"/>
+          <rect x="88"  y="200" width="15" height="22" rx="3" fill="#d65a52" opacity="0.5"/>
+          <rect x="112" y="184" width="15" height="38" rx="3" fill="#26b394" opacity="0.7"/>
+          <rect x="136" y="176" width="15" height="46" rx="3" fill="#2bbf9d" opacity="0.78"/>
+          <rect x="160" y="168" width="15" height="54" rx="3" fill="#2fc9a4" opacity="0.86"/>
+          <rect x="184" y="158" width="15" height="64" rx="3" fill="#34d1ab" opacity="0.95"/>
+          <rect x="208" y="150" width="15" height="72" rx="3" fill="#3bd9b2"/>
+        </g>
+        <path d="M32 178 L74 150 L116 164 L152 112 L192 86 L226 50 L226 222 L32 222 Z" fill="url(#area)"/>
+        <polyline points="32,178 74,150 116,164 152,112 192,86 226,50" fill="none" stroke="url(#line)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="226" cy="50" r="9" fill="#2e7bff"/>
+        <circle cx="226" cy="50" r="3.5" fill="#ffffff"/>
+      </g>
+      <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="url(#rim)" stroke-width="2.5"/>
     </svg>
     <div class="logo-text">Stock<span>Analyzer</span></div>
   </div>
   <div class="loader">
     <div class="loader-bar"></div>
   </div>
-  <div class="status">Server wird gestartet...</div>
-  <div class="version">v1.0.0</div>
+  <div class="status" id="status">Server wird gestartet&hellip;</div>
+  <div class="version" id="version"></div>
+  <script>
+    // Version is injected via query string (?v=1.2.2) by the main process.
+    var v = new URLSearchParams(location.search).get('v');
+    document.getElementById('version').textContent = v ? 'v' + v : '';
+
+    // The main process drives real loading phases via setStatus(...).
+    // Each change cross-fades the text for a smoother feel.
+    var statusEl = document.getElementById('status');
+    window.setStatus = function (text) {
+      if (!statusEl || statusEl.textContent === text) return;
+      statusEl.style.transition = 'opacity 0.18s ease';
+      statusEl.style.opacity = '0';
+      setTimeout(function () {
+        statusEl.textContent = text;
+        statusEl.style.opacity = '1';
+      }, 180);
+    };
+  </script>
 </body>
 </html>

@@ -26,14 +26,25 @@ async function createWindow() {
     },
   });
 
-  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'), {
+    query: { v: app.getVersion() },
+  });
 
   console.log('  Static dir:', distPath);
   console.log('  Packaged:', app.isPackaged);
   console.log('  Version:', app.getVersion());
 
+  // Push a real loading-phase message to the splash screen (best-effort).
+  const splashStatus = (text: string) => {
+    if (splashWindow.isDestroyed()) return;
+    splashWindow.webContents
+      .executeJavaScript(`window.setStatus && window.setStatus(${JSON.stringify(text)})`)
+      .catch(() => {});
+  };
+
   // Start server (also pre-warms Yahoo auth in background)
   const port = await startServer(distPath, 0); // port 0 = random available port
+  splashStatus('Marktdaten werden geladen…');
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -51,15 +62,41 @@ async function createWindow() {
     },
   });
 
-  // Helper to show main window and close splash (only once)
+  // Helper to show main window and cross-fade out the splash (only once)
   let shown = false;
   function showMainWindow() {
-    if (shown) return;
+    if (shown || !mainWindow) return;
     shown = true;
-    if (!splashWindow.isDestroyed()) splashWindow.close();
-    mainWindow?.show();
-    mainWindow?.focus();
+
+    // Fade the main window in from transparent for a smooth hand-off.
+    mainWindow.setOpacity(0);
+    mainWindow.show();
+    mainWindow.focus();
+
+    let mainOp = 0;
+    const fadeIn = setInterval(() => {
+      mainOp = Math.min(1, mainOp + 0.12);
+      if (!mainWindow || mainWindow.isDestroyed()) return clearInterval(fadeIn);
+      mainWindow.setOpacity(mainOp);
+      if (mainOp >= 1) clearInterval(fadeIn);
+    }, 16);
+
+    // Simultaneously fade the splash out, then close it.
+    let splashOp = 1;
+    const fadeOut = setInterval(() => {
+      if (splashWindow.isDestroyed()) return clearInterval(fadeOut);
+      splashOp -= 0.12;
+      if (splashOp <= 0) {
+        clearInterval(fadeOut);
+        splashWindow.close();
+      } else {
+        splashWindow.setOpacity(splashOp);
+      }
+    }, 16);
   }
+
+  // Update splash text while the UI bundle loads.
+  mainWindow.webContents.once('did-start-loading', () => splashStatus('Oberfläche wird geladen…'));
 
   // Show window when page is ready OR after timeout as fallback
   mainWindow.once('ready-to-show', showMainWindow);

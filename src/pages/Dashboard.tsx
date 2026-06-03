@@ -24,6 +24,7 @@ import { usePrice } from '../hooks/usePrice';
 import { usePortfolio } from '../hooks/usePortfolio';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StockContextMenu from '../components/ContextMenu';
+import { Price } from '../components/Price';
 import { SkeletonCard, SkeletonTableRow } from '../components/Skeleton';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDashboardLayout, getWidgetLabel } from '../hooks/useDashboardLayout';
@@ -285,7 +286,7 @@ function MarketIndicesWidget({ quotes, navigate, locale }: { quotes: QuoteData[]
                 {MAJOR_INDEX_NAMES[idx.symbol] || idx.shortName || idx.symbol}
               </div>
               <div className="text-lg font-bold font-mono text-txt-primary">
-                {fp(idx.regularMarketPrice, idx.currency)}
+                <Price value={idx.regularMarketPrice} currency={idx.currency} size={16} />
               </div>
               <div className="flex items-center gap-2 mt-1.5">
                 <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg ${isPositive ? 'bg-success/10' : 'bg-danger/10'}`}>
@@ -468,9 +469,12 @@ function DashboardHero({
               <Wallet className="w-4 h-4 text-accent" />
             </div>
             <div className="flex flex-col leading-none gap-0.5 text-left">
-              <span className="text-sm font-bold font-mono text-txt-primary">
-                {fp(snapshot.totalValue, snapshot.currency)}
-              </span>
+              <Price
+                value={snapshot.totalValue}
+                currency={snapshot.currency}
+                size={13}
+                className="text-sm font-bold font-mono text-txt-primary"
+              />
               <span
                 className={`text-[11px] font-mono font-semibold ${
                   snapshot.dayChange >= 0 ? 'text-success' : 'text-danger'
@@ -797,7 +801,7 @@ function MarketOverviewSection({
                   </div>
                 </div>
                 <div className="text-xl font-bold font-mono text-txt-primary mt-2 tracking-tight tabular-nums">
-                  {fp(idx.regularMarketPrice, idx.currency)}
+                  <Price value={idx.regularMarketPrice} currency={idx.currency} size={18} />
                 </div>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className={`text-xs font-mono font-semibold px-1.5 py-0.5 rounded-md ${isPositive ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
@@ -895,8 +899,8 @@ function TopGainersSection({
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-mono text-txt-primary font-medium">
-                  {fp(s.price, s.currency)}
+                <div className="text-sm font-mono text-txt-primary font-medium inline-flex justify-end">
+                  <Price value={s.price} currency={s.currency} size={13} />
                 </div>
                 <div className="badge-success text-[11px]">{formatPercent(s.changePercent)}</div>
               </div>
@@ -987,8 +991,8 @@ function TopLosersSection({
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-mono text-txt-primary font-medium">
-                  {fp(s.price, s.currency)}
+                <div className="text-sm font-mono text-txt-primary font-medium inline-flex justify-end">
+                  <Price value={s.price} currency={s.currency} size={13} />
                 </div>
                 <div className="badge-danger text-[11px]">{formatPercent(s.changePercent)}</div>
               </div>
@@ -1077,9 +1081,13 @@ function WatchlistTableSection({
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <span className="text-sm font-mono text-txt-primary font-medium">
-                        {fp(q.regularMarketPrice, q.currency)}
-                      </span>
+                      <Price
+                        value={q.regularMarketPrice}
+                        currency={q.currency}
+                        size={13}
+                        className="text-sm font-mono text-txt-primary font-medium"
+                        flapClassName="justify-end"
+                      />
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <span className={`text-sm font-mono font-semibold ${isPositive ? 'badge-success' : 'badge-danger'}`}>

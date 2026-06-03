@@ -17,6 +17,7 @@ import { useApp } from '../context';
 import { fetchQuotes, fetchChart, searchSymbols } from '../api';
 import { formatPercent, formatLargeNumber } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
+import { Price } from '../components/Price';
 
 import type { SearchResult } from '../types';
 
@@ -585,7 +586,7 @@ export default function Portfolio() {
             </span>
           </div>
           <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
-            {fp(totalValue, displayCcy)}
+            <Price value={totalValue} currency={displayCcy} size={22} />
           </p>
         </div>
 
@@ -600,7 +601,7 @@ export default function Portfolio() {
             </span>
           </div>
           <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
-            {fp(investedValue, displayCcy)}
+            <Price value={investedValue} currency={displayCcy} size={22} />
           </p>
         </div>
 
@@ -615,7 +616,7 @@ export default function Portfolio() {
             </span>
           </div>
           <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(totalPnl)}`}>
-            {fp(totalPnl, displayCcy)}
+            <Price value={totalPnl} currency={displayCcy} size={22} tone={totalPnl >= 0 ? 'positive' : 'negative'} />
           </p>
           <p className={`text-xs font-mono font-semibold ${pnlColor(totalPnl)}`}>{formatPercent(totalPnlPercent * 100)}</p>
         </div>
@@ -631,7 +632,7 @@ export default function Portfolio() {
             </span>
           </div>
           <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(dayChange)}`}>
-            {fp(dayChange, displayCcy)}
+            <Price value={dayChange} currency={displayCcy} size={22} tone={dayChange >= 0 ? 'positive' : 'negative'} />
           </p>
           <p className={`text-xs font-mono font-semibold ${pnlColor(dayChange)}`}>{formatPercent(dayChangePercent * 100)}</p>
         </div>
@@ -773,16 +774,16 @@ export default function Portfolio() {
                         {h.shares}
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-secondary">
-                        {fp(h.avgPrice, cur)}
+                        <Price value={h.avgPrice} currency={cur} size={12} flapClassName="justify-end" />
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-primary">
-                        {quotesLoading && !q ? '…' : fp(currentPrice, cur)}
+                        {quotesLoading && !q ? '…' : <Price value={currentPrice} currency={cur} size={12} flapClassName="justify-end" />}
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums text-txt-primary font-medium">
-                        {fp(marketValue, cur)}
+                        <Price value={marketValue} currency={cur} size={12} flapClassName="justify-end" />
                       </td>
                       <td className={`px-3 py-3 text-right font-mono tabular-nums font-medium ${pnlColor(pnl)}`}>
-                        {fp(pnl, cur)}
+                        <Price value={pnl} currency={cur} size={12} tone={pnl >= 0 ? 'positive' : 'negative'} flapClassName="justify-end" />
                       </td>
                       <td className="px-3 py-3 text-right">
                         <span className={`text-xs font-mono font-semibold ${pnlPct >= 0 ? 'badge-success' : 'badge-danger'}`}>
@@ -1149,7 +1150,7 @@ export default function Portfolio() {
                 </div>
                 <div className="flex items-center gap-4 text-txt-secondary font-mono tabular-nums">
                   <span>{tx.shares} Stk.</span>
-                  <span>@ {fp(tx.price, 'USD')}</span>
+                  <span className="inline-flex items-center gap-1">@ <Price value={tx.price} currency="USD" size={11} /></span>
                   <span className="text-txt-muted text-xs">
                     {new Date(tx.date).toLocaleDateString('de-DE', {
                       day: '2-digit',

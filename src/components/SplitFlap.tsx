@@ -26,20 +26,34 @@ function FlapChar({ char, flipDurationMs }: FlapCharProps) {
     };
   }, [char, current, flipDurationMs]);
 
-  const isSeparator = current === ' ' || current === ',' || current === '.' || current === '€' || current === '$' || current === '%' || current === '+' || current === '-';
+  // Only digits 0-9 sit on flaps; everything else (currency symbol, comma,
+  // dot, sign, and any space variant incl. the NBSP / narrow-NBSP that
+  // Intl.NumberFormat inserts before the currency) is printed statically.
+  const isSeparator = !/[0-9]/.test(current);
+
+  // Separators (currency symbol, comma, space, sign) are printed statically
+  // between the flaps — they never flip. Render them as a plain centred glyph
+  // with no tile, no seam and no flap halves.
+  if (isSeparator) {
+    return (
+      <span className="split-flap-char split-flap-char-sep">
+        <span className="split-flap-sep-glyph">{current === ' ' ? ' ' : current}</span>
+      </span>
+    );
+  }
 
   return (
     <span
-      className={`split-flap-char${isSeparator ? ' split-flap-char-sep' : ''}${flipping ? ' is-flipping' : ''}`}
+      className={`split-flap-char${flipping ? ' is-flipping' : ''}`}
       style={{ ['--flip-duration' as string]: `${flipDurationMs}ms` }}
     >
-      {/* Top half (static) shows old char */}
+      {/* Top half (static) shows the NEW char — revealed as the top flap falls away */}
       <span className="split-flap-half split-flap-top">
-        <span className="split-flap-glyph">{current}</span>
-      </span>
-      {/* Bottom half (static) shows new char (or current if not flipping) */}
-      <span className="split-flap-half split-flap-bottom">
         <span className="split-flap-glyph">{next ?? current}</span>
+      </span>
+      {/* Bottom half (static) shows the OLD char — until the bottom flap covers it */}
+      <span className="split-flap-half split-flap-bottom">
+        <span className="split-flap-glyph">{current}</span>
       </span>
       {/* Animated flap: top->bottom flip showing old char */}
       {flipping && next !== null && (
@@ -90,8 +104,8 @@ function SplitFlapBase({
       className={`split-flap split-flap-tone-${tone} ${className}`}
       style={{
         ['--flap-h' as string]: `${size}px`,
-        ['--flap-w' as string]: `${Math.round(size * 0.62)}px`,
-        ['--flap-fs' as string]: `${Math.round(size * 0.78)}px`,
+        ['--flap-w' as string]: `${Math.round(size * 0.68)}px`,
+        ['--flap-fs' as string]: `${Math.round(size * 0.72)}px`,
       }}
       aria-label={ariaLabel ?? value}
       role="text"
