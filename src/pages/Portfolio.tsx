@@ -12,6 +12,8 @@ import {
   Upload,
   LineChart,
   ShieldAlert,
+  Coins,
+  CalendarClock,
 } from 'lucide-react';
 
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -30,6 +32,8 @@ interface PortfolioQuote {
   change: number | null;
   changePercent: number | null;
   currency: string;
+  dividendRate?: number;   // annual dividend per share, native currency
+  dividendDate?: number;   // next payment, epoch seconds
 }
 
 // Risk analysis metrics
@@ -208,6 +212,8 @@ export default function Portfolio() {
               change: q.regularMarketChange,
               changePercent: q.regularMarketChangePercent,
               currency: q.currency || 'USD',
+              dividendRate: q.trailingAnnualDividendRate,
+              dividendDate: q.dividendDate,
             };
           }
           setQuotes(map);
@@ -300,6 +306,34 @@ export default function Portfolio() {
     if (first <= 0) return null;
     return { abs: last - first, pct: (last - first) / first };
   }, [valueSeries]);
+
+  // Dividend tracking: per-holding forward annual income (converted to the
+  // display currency), yield, and yield-on-cost. Only dividend payers appear.
+  const dividends = useMemo(() => {
+    const rows = holdings
+      .map((h) => {
+        const q = quotes[h.symbol];
+        const rate = q?.dividendRate; // native annual dividend per share
+        if (!rate || rate <= 0) return null;
+        const cur = q?.currency || 'USD';
+        const price = q?.price ?? h.avgPrice;
+        const income = convertPrice(h.shares * rate, cur).value;
+        return {
+          symbol: h.symbol,
+          name: h.name,
+          rate,
+          currency: cur,
+          income,
+          currentYield: price > 0 ? rate / price : 0,
+          yieldOnCost: h.avgPrice > 0 ? rate / h.avgPrice : 0,
+          nextDate: q?.dividendDate ?? null,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((a, b) => b.income - a.income);
+    const totalIncome = rows.reduce((s, r) => s + r.income, 0);
+    return { rows, totalIncome };
+  }, [holdings, quotes, convertPrice]);
 
   // -----------------------------------------------------------------------
   // Donut chart data
@@ -1211,6 +1245,95 @@ export default function Portfolio() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Dividenden                                                        */}
+      {/* ----------------------------------------------------------------- */}
+
+      {dividends.rows.length > 0 && (
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-accent/10">
+              <Coins className="w-5 h-5 text-accent" />
+            </div>
+            <h2 className="section-title text-lg">Dividenden</h2>
+          </div>
+
+          {/* Summary tiles */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
+              <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
+                Prognose Jahreseinkommen
+              </span>
+              <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-success">
+                <Price value={dividends.totalIncome} currency={displayCcy} size={16} tone="positive" />
+              </p>
+            </div>
+            <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
+              <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
+                Ø Dividendenrendite
+              </span>
+              <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-txt-primary">
+                {(totalValue > 0 ? (dividends.totalIncome / totalValue) * 100 : 0).toFixed(2)}%
+              </p>
+            </div>
+            <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
+              <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
+                Yield on Cost
+              </span>
+              <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-txt-primary">
+                {(investedValue > 0 ? (dividends.totalIncome / investedValue) * 100 : 0).toFixed(2)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Per-holding table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/10">
+                  <th className="text-left px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Aktie</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Rendite</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Div./Aktie</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Jahreseinkommen</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">YoC</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Nächste Zahlung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dividends.rows.map((r) => (
+                  <tr key={r.symbol} className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] transition-colors duration-200">
+                    <td className="px-3 py-2.5">
+                      <span className="font-mono font-bold text-accent">{r.symbol}</span>
+                      <span className="block text-[11px] text-txt-muted truncate max-w-[160px]">{r.name}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-txt-secondary">
+                      {(r.currentYield * 100).toFixed(2)}%
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-txt-secondary">
+                      <Price value={r.rate} currency={r.currency} size={12} flapClassName="justify-end" />
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-success font-medium">
+                      <Price value={r.income} currency={displayCcy} size={12} tone="positive" flapClassName="justify-end" />
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-txt-secondary">
+                      {(r.yieldOnCost * 100).toFixed(2)}%
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs text-txt-muted font-mono tabular-nums">
+                      {r.nextDate ? (
+                        <span className="inline-flex items-center gap-1 justify-end">
+                          <CalendarClock className="w-3 h-3" />
+                          {new Date(r.nextDate * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </span>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
