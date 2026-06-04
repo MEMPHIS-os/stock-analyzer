@@ -227,13 +227,20 @@ const TAB_CONFIG_INDEX: { key: TabType; i18nKey: string; icon: typeof Building2 
   { key: 'forecast', i18nKey: 'detail.tab.forecast', icon: Target },
 ];
 
+// Crypto has no fundamentals/earnings/analyst targets — keep it to price-based tabs.
+const TAB_CONFIG_CRYPTO: { key: TabType; i18nKey: string; icon: typeof Building2 }[] = [
+  { key: 'technical', i18nKey: 'detail.tab.technical', icon: Activity },
+  { key: 'news', i18nKey: 'detail.tab.news', icon: Newspaper },
+];
+
 export default function StockDetail() {
   const { symbol = 'AAPL' } = useParams<{ symbol: string }>();
   const { locale, activeAlerts, t } = useApp();
   const isIndex = symbol.startsWith('^');
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const isFund = !isIndex && (quote?.quoteType === 'ETF' || quote?.quoteType === 'MUTUALFUND');
-  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : isFund ? TAB_CONFIG_FUND : TAB_CONFIG_STOCK;
+  const isCrypto = !isIndex && quote?.quoteType === 'CRYPTOCURRENCY';
+  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : isCrypto ? TAB_CONFIG_CRYPTO : isFund ? TAB_CONFIG_FUND : TAB_CONFIG_STOCK;
   const [chartData, setChartData] = useState<OHLCVData[]>([]);
   const [range, setRange] = useState<TimeRange>('1y');
   const [chartInterval, setChartInterval] = useState<ChartInterval>('1d');
@@ -352,6 +359,15 @@ export default function StockDetail() {
     setCompareSymbols([]);
     setCompareData({});
   }, [symbol]);
+
+  // Once the asset kind is known, snap the active tab to a valid one
+  // (e.g. crypto has no fundamentals/earnings/forecast tabs).
+  useEffect(() => {
+    if (!TAB_CONFIG.some((tab) => tab.key === activeTab)) {
+      setActiveTab(TAB_CONFIG[0].key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCrypto, isFund, isIndex]);
 
   // Fetch chart data for each compared symbol (same range + interval as primary).
   useEffect(() => {
