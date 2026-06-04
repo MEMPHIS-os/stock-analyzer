@@ -20,11 +20,15 @@ import {
   ChevronDown,
   Layers,
   Briefcase,
+  GitCompareArrows,
+  X,
+  Search,
 } from 'lucide-react';
-import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, getIntervalForRange } from '../api';
+import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, searchSymbols } from '../api';
 import { useApp } from '../context';
 import StockChart from '../components/StockChart';
 import type { StockChartRef } from '../components/StockChart';
+import ComparisonChart, { COMPARE_COLORS } from '../components/ComparisonChart';
 import StockOverview from '../components/StockOverview';
 import FundamentalsPanel from '../components/FundamentalsPanel';
 import FundPanel from '../components/FundPanel';
@@ -41,7 +45,7 @@ import { useDrawings } from '../hooks/useDrawings';
 import { downloadScreenshotFromCanvas, exportOHLCVtoCSV } from '../exportUtils';
 import { buildEarningsMarkers } from '../utils/earningsMarkers';
 import { generateStockReport } from '../utils/pdfReport';
-import type { QuoteData, OHLCVData, FundamentalsData, TimeRange, ChartType, IndicatorType } from '../types';
+import type { QuoteData, OHLCVData, FundamentalsData, TimeRange, ChartType, IndicatorType, ChartInterval, SearchResult } from '../types';
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '1d', label: '1T' },
@@ -49,10 +53,45 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '1mo', label: '1M' },
   { value: '3mo', label: '3M' },
   { value: '6mo', label: '6M' },
+  { value: 'ytd', label: 'YTD' },
   { value: '1y', label: '1J' },
   { value: '2y', label: '2J' },
   { value: '5y', label: '5J' },
+  { value: 'max', label: 'Max' },
 ];
+
+// Intervals Yahoo accepts per range (1m ≤ 7d, 5m/15m ≤ 60d, 1h ≤ 730d, daily+ any).
+const INTERVAL_LABELS: Record<ChartInterval, string> = {
+  '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '1d': '1T', '1wk': '1W', '1mo': '1M',
+};
+
+function validIntervals(range: TimeRange): ChartInterval[] {
+  switch (range) {
+    case '1d': return ['1m', '5m', '15m', '1h'];
+    case '5d': return ['1m', '5m', '15m', '1h', '1d'];
+    case '1mo': return ['5m', '15m', '1h', '1d'];
+    case '3mo':
+    case '6mo':
+    case 'ytd':
+    case '1y': return ['1h', '1d', '1wk'];
+    case '2y': return ['1h', '1d', '1wk', '1mo'];
+    case '5y': return ['1d', '1wk', '1mo'];
+    case 'max': return ['1d', '1wk', '1mo'];
+    default: return ['1d'];
+  }
+}
+
+// Sensible default interval per range (matches getIntervalForRange where it overlaps).
+function defaultInterval(range: TimeRange): ChartInterval {
+  switch (range) {
+    case '1d': return '5m';
+    case '5d': return '15m';
+    case '1mo': return '1h';
+    case '5y':
+    case 'max': return '1wk';
+    default: return '1d';
+  }
+}
 
 const CHART_TYPES: { value: ChartType; label: string; icon: typeof CandlestickChart }[] = [
   { value: 'candlestick', label: 'Kerzen', icon: CandlestickChart },
@@ -76,6 +115,92 @@ const INDICATORS: { value: IndicatorType; label: string; group: string }[] = [
   { value: 'williamsR', label: 'Williams %R', group: 'Oszillator' },
   { value: 'pivotPoints', label: 'Pivot', group: 'S/R' },
 ];
+
+// ── Compare control: search + add symbols to overlay on the chart ──
+function CompareControl({
+  onAdd,
+  disabled,
+  locale,
+}: {
+  onAdd: (symbol: string) => void;
+  disabled: boolean;
+  locale: 'de' | 'en';
+}) {
+  const de = locale === 'de';
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      try { setResults(await searchSymbols(query.trim())); } catch { setResults([]); }
+    }, 250);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => !disabled && setOpen((o) => !o)}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ring-1 ${
+          open
+            ? 'bg-accent/15 text-accent ring-accent/30'
+            : 'bg-dark-700/60 text-txt-secondary ring-border/10 hover:text-txt-primary hover:bg-dark-600/40'
+        } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+        title={de ? 'Symbol zum Vergleich hinzufügen' : 'Add symbol to compare'}
+      >
+        <GitCompareArrows className="w-4 h-4" />
+        {de ? 'Vergleichen' : 'Compare'}
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-2 w-64 rounded-xl shadow-depth-lg z-50 overflow-hidden animate-scale-in"
+          style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(180%)', WebkitBackdropFilter: 'blur(20px) saturate(180%)', border: '1px solid var(--glass-border)' }}
+        >
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+            <Search className="w-4 h-4 text-txt-muted shrink-0" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={de ? 'Symbol suchen…' : 'Search symbol…'}
+              className="flex-1 bg-transparent outline-none text-sm text-txt-primary placeholder:text-txt-muted"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {results.length === 0 && query.trim() && (
+              <div className="px-3 py-2 text-xs text-txt-muted">{de ? 'Keine Treffer' : 'No results'}</div>
+            )}
+            {results.map((r) => (
+              <button
+                key={r.symbol}
+                onClick={() => { onAdd(r.symbol); setQuery(''); setResults([]); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-dark-600/40 transition-colors"
+              >
+                <span className="font-mono font-bold text-sm text-accent min-w-[52px]">{r.symbol}</span>
+                <span className="text-xs text-txt-secondary truncate flex-1">{r.shortname}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type TabType = 'fundamentals' | 'constituents' | 'technical' | 'news' | 'earnings' | 'forecast' | 'fund';
 
@@ -102,15 +227,23 @@ const TAB_CONFIG_INDEX: { key: TabType; i18nKey: string; icon: typeof Building2 
   { key: 'forecast', i18nKey: 'detail.tab.forecast', icon: Target },
 ];
 
+// Crypto has no fundamentals/earnings/analyst targets — keep it to price-based tabs.
+const TAB_CONFIG_CRYPTO: { key: TabType; i18nKey: string; icon: typeof Building2 }[] = [
+  { key: 'technical', i18nKey: 'detail.tab.technical', icon: Activity },
+  { key: 'news', i18nKey: 'detail.tab.news', icon: Newspaper },
+];
+
 export default function StockDetail() {
   const { symbol = 'AAPL' } = useParams<{ symbol: string }>();
   const { locale, activeAlerts, t } = useApp();
   const isIndex = symbol.startsWith('^');
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const isFund = !isIndex && (quote?.quoteType === 'ETF' || quote?.quoteType === 'MUTUALFUND');
-  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : isFund ? TAB_CONFIG_FUND : TAB_CONFIG_STOCK;
+  const isCrypto = !isIndex && quote?.quoteType === 'CRYPTOCURRENCY';
+  const TAB_CONFIG = isIndex ? TAB_CONFIG_INDEX : isCrypto ? TAB_CONFIG_CRYPTO : isFund ? TAB_CONFIG_FUND : TAB_CONFIG_STOCK;
   const [chartData, setChartData] = useState<OHLCVData[]>([]);
   const [range, setRange] = useState<TimeRange>('1y');
+  const [chartInterval, setChartInterval] = useState<ChartInterval>('1d');
   const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [indicators, setIndicators] = useState<IndicatorType[]>(['sma20']);
   const [activeTab, setActiveTab] = useState<TabType>(isIndex ? 'constituents' : 'fundamentals');
@@ -120,6 +253,8 @@ export default function StockDetail() {
   const [fullscreen, setFullscreen] = useState(false);
   const [yoyEnabled, setYoyEnabled] = useState(false);
   const [logScale, setLogScale] = useState(false);
+  const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
+  const [compareData, setCompareData] = useState<Record<string, OHLCVData[]>>({});
   const [chartApi, setChartApi] = useState<import('lightweight-charts').IChartApi | null>(null);
   const [fundamentals, setFundamentals] = useState<FundamentalsData | null>(null);
   const [showEarnings, setShowEarnings] = useState(true);
@@ -196,23 +331,82 @@ export default function StockDetail() {
     return buildEarningsMarkers(fundamentals.earnings.earningsChart.quarterly, locale, quote?.currency);
   }, [showEarnings, fundamentals, locale, quote?.currency]);
 
+  // When the range changes, snap the interval back to a sensible default that
+  // is valid for that range (Yahoo rejects e.g. 1m for multi-year ranges).
+  useEffect(() => {
+    setChartInterval((prev) => (validIntervals(range).includes(prev) ? prev : defaultInterval(range)));
+  }, [range]);
+
   // Load chart data
   const loadChart = useCallback(async () => {
     setLoadingChart(true);
     try {
-      const interval = getIntervalForRange(range);
-      const result = await fetchChart(symbol, range, interval);
+      const result = await fetchChart(symbol, range, chartInterval);
       setChartData(result.quotes);
     } catch {
       setChartData([]);
     } finally {
       setLoadingChart(false);
     }
-  }, [symbol, range]);
+  }, [symbol, range, chartInterval]);
 
   useEffect(() => {
     loadChart();
   }, [loadChart]);
+
+  // Reset comparison overlay when navigating to a different symbol.
+  useEffect(() => {
+    setCompareSymbols([]);
+    setCompareData({});
+  }, [symbol]);
+
+  // Once the asset kind is known, snap the active tab to a valid one
+  // (e.g. crypto has no fundamentals/earnings/forecast tabs).
+  useEffect(() => {
+    if (!TAB_CONFIG.some((tab) => tab.key === activeTab)) {
+      setActiveTab(TAB_CONFIG[0].key);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCrypto, isFund, isIndex]);
+
+  // Fetch chart data for each compared symbol (same range + interval as primary).
+  useEffect(() => {
+    if (compareSymbols.length === 0) { setCompareData({}); return; }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        compareSymbols.map(async (s) => {
+          try {
+            const r = await fetchChart(s, range, chartInterval);
+            return [s, r.quotes] as const;
+          } catch {
+            return [s, [] as OHLCVData[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) setCompareData(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [compareSymbols, range, chartInterval]);
+
+  const compareMode = compareSymbols.length > 0;
+  const compareEntries = useMemo(
+    () => compareSymbols.map((s, i) => ({
+      symbol: s,
+      data: compareData[s] || [],
+      color: COMPARE_COLORS[i % COMPARE_COLORS.length],
+    })),
+    [compareSymbols, compareData],
+  );
+  const addCompare = useCallback((sym: string) => {
+    const s = sym.toUpperCase();
+    setCompareSymbols((prev) =>
+      prev.includes(s) || s === symbol.toUpperCase() || prev.length >= 4 ? prev : [...prev, s],
+    );
+  }, [symbol]);
+  const removeCompare = useCallback((sym: string) => {
+    setCompareSymbols((prev) => prev.filter((x) => x !== sym));
+  }, []);
 
   // Auto-refresh quote every 30s
   useEffect(() => {
@@ -403,6 +597,22 @@ export default function StockDetail() {
           </button>
         ))}
       </div>
+      {/* Interval selector (valid options depend on the chosen range) */}
+      <div className="flex gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1" title={locale === 'de' ? 'Kerzen-Intervall' : 'Candle interval'}>
+        {validIntervals(range).map((iv) => (
+          <button
+            key={iv}
+            onClick={() => setChartInterval(iv)}
+            className={`${compact ? 'px-2' : 'px-2.5'} py-1 rounded-lg text-xs font-semibold transition-all duration-200 ${
+              chartInterval === iv
+                ? 'bg-accent text-white shadow-glow-sm'
+                : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
+            }`}
+          >
+            {INTERVAL_LABELS[iv]}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-wrap gap-1 items-center">
         {/* Indicator dropdown */}
         <div className="relative" ref={indicatorDropdownRef}>
@@ -503,6 +713,13 @@ export default function StockDetail() {
             <div className="h-full flex items-center justify-center">
               <LoadingSpinner text="Lade Chart..." />
             </div>
+          ) : compareMode ? (
+            <ComparisonChart
+              primarySymbol={symbol.toUpperCase()}
+              primaryData={chartData}
+              compares={compareEntries}
+              height={window.innerHeight - 56}
+            />
           ) : (
             <StockChart
               ref={chartRef}
@@ -527,6 +744,8 @@ export default function StockDetail() {
       {/* Chart controls */}
       <div className="flex flex-wrap items-center gap-4 py-2">
         {chartControls(false)}
+
+        <CompareControl onAdd={addCompare} disabled={compareSymbols.length >= 4} locale={locale} />
 
         <div className="ml-auto flex items-center gap-0.5 bg-dark-700/60 ring-1 ring-border/10 rounded-xl p-1">
           <button
@@ -560,18 +779,56 @@ export default function StockDetail() {
         </div>
       </div>
 
+      {/* Comparison chips */}
+      {compareMode && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-txt-muted">
+            {locale === 'de' ? 'Vergleich (% norm.)' : 'Compare (% norm.)'}
+          </span>
+          <span className="flex items-center gap-1.5 text-xs font-mono font-bold px-2 py-1 rounded-lg bg-dark-700/60 ring-1 ring-border/10">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'var(--accent)' }} />
+            {symbol.toUpperCase()}
+          </span>
+          {compareEntries.map((c) => (
+            <span
+              key={c.symbol}
+              className="flex items-center gap-1.5 text-xs font-mono font-bold px-2 py-1 rounded-lg bg-dark-700/60 ring-1 ring-border/10"
+            >
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: c.color }} />
+              {c.symbol}
+              <button
+                onClick={() => removeCompare(c.symbol)}
+                className="ml-0.5 text-txt-muted hover:text-danger transition-colors"
+                title={locale === 'de' ? 'Entfernen' : 'Remove'}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Chart with Drawing Toolbar */}
       <div className="flex gap-2">
-        <DrawingToolbar
-          activeTool={activeTool}
-          onSelectTool={setActiveTool}
-          onClearAll={clearAll}
-          drawingCount={drawings.length}
-          pendingPointsCount={pendingPoints.length}
-        />
+        {!compareMode && (
+          <DrawingToolbar
+            activeTool={activeTool}
+            onSelectTool={setActiveTool}
+            onClearAll={clearAll}
+            drawingCount={drawings.length}
+            pendingPointsCount={pendingPoints.length}
+          />
+        )}
         <div className="card overflow-hidden flex-1">
           {loadingChart ? (
             <SkeletonChart />
+          ) : compareMode ? (
+            <ComparisonChart
+              primarySymbol={symbol.toUpperCase()}
+              primaryData={chartData}
+              compares={compareEntries}
+              height={480}
+            />
           ) : (
             <StockChart
               ref={chartRef}

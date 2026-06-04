@@ -16,12 +16,19 @@ interface PriceProps {
   className?: string;
   /** Extra classes applied to the split-flap wrapper. */
   flapClassName?: string;
+  /**
+   * Opt into the classic split-flap board. The board only renders when this is
+   * true AND the global "classic display" mode is enabled. It is reserved for a
+   * few hero spots (ticker, the large detail-page price) — everywhere else
+   * Price stays plain text so number sizing reads consistently.
+   */
+  board?: boolean;
 }
 
 /**
- * Renders a formatted, currency-converted price. When the global
- * "classic display board" (split-flap) mode is enabled it renders a Solari
- * board; otherwise it falls back to plain text with the given className.
+ * Renders a formatted, currency-converted price. Plain text by default; renders
+ * a Solari split-flap board only at hero spots that pass `board` while the
+ * global classic-display mode is on.
  */
 function PriceBase({
   value,
@@ -30,12 +37,13 @@ function PriceBase({
   tone = 'neutral',
   className = '',
   flapClassName = '',
+  board = false,
 }: PriceProps) {
   const { fp } = usePrice();
   const { splitFlapEnabled } = useApp();
   const text = fp(value, currency);
 
-  if (splitFlapEnabled && value != null && !isNaN(value as number)) {
+  if (board && splitFlapEnabled && value != null && !isNaN(value as number)) {
     return <SplitFlap value={text} size={size} tone={tone} className={flapClassName} />;
   }
 

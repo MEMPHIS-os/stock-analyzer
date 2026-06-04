@@ -32,6 +32,11 @@ export interface QuoteData {
   currency?: string;
   exchange?: string;
   exchangeTimezoneName?: string;
+  // Dividend fields (passed through from Yahoo's v7 quote)
+  trailingAnnualDividendRate?: number;   // annual dividend per share, in `currency`
+  trailingAnnualDividendYield?: number;  // fraction, e.g. 0.0052 = 0.52%
+  dividendYield?: number;                // fraction (when present)
+  dividendDate?: number;                 // next payment date, epoch seconds
 }
 
 export interface SearchResult {
@@ -166,7 +171,7 @@ export interface FundamentalsData {
   };
 }
 
-export type TimeRange = '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | 'max';
+export type TimeRange = '1d' | '5d' | '1mo' | '3mo' | '6mo' | 'ytd' | '1y' | '2y' | '5y' | 'max';
 export type ChartInterval = '1m' | '5m' | '15m' | '1h' | '1d' | '1wk' | '1mo';
 export type ChartType = 'candlestick' | 'heikinashi' | 'line' | 'area';
 

@@ -74,6 +74,7 @@ interface AppState {
   triggeredAlerts: PriceAlert[];
   addAlert: (input: AddAlertInput) => PriceAlert;
   removeAlert: (id: string) => void;
+  toggleAlert: (id: string) => void;
   clearTriggered: () => void;
   checkAlerts: (
     quotes: Record<
@@ -176,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     triggeredAlerts,
     addAlert,
     removeAlert,
+    toggleAlert,
     clearTriggered,
     checkAlerts,
   } = useAlerts();
@@ -377,6 +379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         triggeredAlerts,
         addAlert,
         removeAlert,
+        toggleAlert,
         clearTriggered,
         checkAlerts,
         alertsPanelOpen,

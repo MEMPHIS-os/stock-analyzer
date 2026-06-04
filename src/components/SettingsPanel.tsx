@@ -254,8 +254,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </span>
                 <span className="text-[11px] text-txt-muted leading-snug">
                   {de
-                    ? 'Kurse blättern wie auf alten Flughafen-Anzeigen'
-                    : 'Prices flip like old airport displays'}
+                    ? 'Ticker & großer Detail-Kurs blättern wie alte Flughafen-Anzeigen'
+                    : 'Ticker & large detail price flip like old airport displays'}
                 </span>
               </div>
               <div className="flex items-center gap-2.5 shrink-0">

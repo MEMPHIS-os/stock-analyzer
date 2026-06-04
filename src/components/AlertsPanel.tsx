@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign } from 'lucide-react';
+import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign, Pause, Play, Repeat } from 'lucide-react';
 import type { PriceAlert, AddAlertInput, AlertKind } from '../hooks/useAlerts';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
@@ -10,6 +10,7 @@ interface AlertsPanelProps {
   triggeredAlerts: PriceAlert[];
   onAdd: (input: AddAlertInput) => PriceAlert;
   onRemove: (id: string) => void;
+  onToggle: (id: string) => void;
   onClearTriggered: () => void;
   onClose: () => void;
 }
@@ -31,6 +32,7 @@ export default function AlertsPanel({
   triggeredAlerts,
   onAdd,
   onRemove,
+  onToggle,
   onClearTriggered,
   onClose,
 }: AlertsPanelProps) {
@@ -41,6 +43,7 @@ export default function AlertsPanel({
   const [symbol, setSymbol] = useState('');
   const [value, setValue] = useState('');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
+  const [recurring, setRecurring] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,11 +52,11 @@ export default function AlertsPanel({
     if (!sym || isNaN(v) || v <= 0) return;
 
     if (kind === 'price') {
-      onAdd({ kind: 'price', symbol: sym, targetPrice: v, condition });
+      onAdd({ kind: 'price', symbol: sym, targetPrice: v, condition, recurring });
     } else if (kind === 'percentChange') {
-      onAdd({ kind: 'percentChange', symbol: sym, targetPercent: v, condition });
+      onAdd({ kind: 'percentChange', symbol: sym, targetPercent: v, condition, recurring });
     } else {
-      onAdd({ kind: 'volumeSpike', symbol: sym, targetMultiplier: v });
+      onAdd({ kind: 'volumeSpike', symbol: sym, targetMultiplier: v, recurring });
     }
     showToast(t('toast.alertCreated'), 'success');
     setSymbol('');
@@ -220,6 +223,25 @@ export default function AlertsPanel({
             </button>
           </div>
 
+          {/* Recurring toggle */}
+          <button
+            type="button"
+            onClick={() => setRecurring((r) => !r)}
+            className="flex items-center gap-2 text-left group"
+          >
+            <span
+              className={`flex items-center justify-center w-4 h-4 rounded border transition-all duration-200 ${
+                recurring ? 'bg-accent border-accent' : 'border-border/40 group-hover:border-border/70'
+              }`}
+            >
+              {recurring && <Check className="w-3 h-3 text-white" />}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-txt-secondary">
+              <Repeat className="w-3.5 h-3.5 text-txt-muted" />
+              {de ? 'Wiederkehrend (erneut auslösen)' : 'Recurring (re-arm after firing)'}
+            </span>
+          </button>
+
           <p className="text-[10px] text-txt-muted leading-snug">
             {kind === 'price' && (de
               ? 'Wird ausgelöst, wenn der Kurs den Schwellwert über- bzw. unterschreitet.'
@@ -254,27 +276,46 @@ export default function AlertsPanel({
               <h3 className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-2.5">
                 {de ? 'Aktive Alarme' : 'Active alerts'} ({activeAlerts.length})
               </h3>
-              {activeAlerts.map((alert) => (
+              {activeAlerts.map((alert) => {
+                const paused = alert.enabled === false;
+                return (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between py-2.5 px-3.5 rounded-xl mb-1.5 transition-all duration-200 hover:bg-dark-600/20"
+                  className={`flex items-center justify-between py-2.5 px-3.5 rounded-xl mb-1.5 transition-all duration-200 hover:bg-dark-600/20 ${paused ? 'opacity-50' : ''}`}
                   style={{ background: 'rgba(var(--color-bg-700), 0.3)' }}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1 rounded-lg bg-dark-700/30">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-1 rounded-lg bg-dark-700/30 shrink-0">
                       {alertIcon(alert)}
                     </div>
-                    <span className="font-mono font-bold text-sm text-txt-primary">
+                    <span className="font-mono font-bold text-sm text-txt-primary shrink-0">
                       {alert.symbol}
                     </span>
-                    <span className="text-xs text-txt-secondary">
+                    <span className="text-xs text-txt-secondary truncate">
                       {describeAlert(alert)}
                     </span>
+                    {alert.recurring && (
+                      <span className="shrink-0 flex items-center gap-1 text-[9px] text-accent bg-accent/10 px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                        <Repeat className="w-2.5 h-2.5" />
+                        {de ? 'wdh.' : 'rec.'}
+                      </span>
+                    )}
+                    {paused && (
+                      <span className="shrink-0 text-[9px] text-warning bg-warning/10 px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                        {de ? 'pausiert' : 'paused'}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-txt-muted">
-                      {formatTime(alert.createdAt)}
-                    </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => onToggle(alert.id)}
+                      className="p-1.5 hover:bg-dark-600/50 rounded-lg transition-all duration-200"
+                      title={paused ? (de ? 'Fortsetzen' : 'Resume') : (de ? 'Pausieren' : 'Pause')}
+                    >
+                      {paused
+                        ? <Play className="w-3.5 h-3.5 text-success" />
+                        : <Pause className="w-3.5 h-3.5 text-txt-muted" />}
+                    </button>
                     <button
                       onClick={() => onRemove(alert.id)}
                       className="p-1.5 hover:bg-danger/20 rounded-lg transition-all duration-200"
@@ -283,7 +324,8 @@ export default function AlertsPanel({
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
