@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import StockDetail from './pages/StockDetail';
 import ComparisonView from './components/ComparisonView';
 import KeyboardShortcuts from './components/KeyboardShortcuts';
+import CommandPalette from './components/CommandPalette';
 import AlertsPanel from './components/AlertsPanel';
 import ToastContainer from './components/Toast';
 import SettingsPanel from './components/SettingsPanel';
@@ -32,6 +33,7 @@ const TICKER_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA',
 
 function AppShell() {
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
@@ -40,7 +42,7 @@ function AppShell() {
   const {
     setSidebarOpen, sidebarOpen,
     alerts, activeAlerts, triggeredAlerts,
-    addAlert, removeAlert, clearTriggered,
+    addAlert, removeAlert, toggleAlert, clearTriggered,
     alertsPanelOpen, setAlertsPanelOpen,
     settingsPanelOpen, setSettingsPanelOpen,
     t, locale, showToast,
@@ -102,6 +104,18 @@ function AppShell() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [setSidebarOpen, sidebarOpen]);
 
+  // Command palette: Ctrl/Cmd+K toggles it (works even from inside inputs)
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
   // Auto-hide ticker band & show scroll-to-top on scroll
   useEffect(() => {
     const el = mainRef.current;
@@ -151,6 +165,7 @@ function AppShell() {
         open={showShortcuts}
         onClose={() => setShowShortcuts(false)}
       />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       {alertsPanelOpen && (
         <AlertsPanel
           alerts={alerts}
@@ -158,6 +173,7 @@ function AppShell() {
           triggeredAlerts={triggeredAlerts}
           onAdd={addAlert}
           onRemove={removeAlert}
+          onToggle={toggleAlert}
           onClearTriggered={clearTriggered}
           onClose={() => setAlertsPanelOpen(false)}
         />
@@ -170,8 +186,8 @@ function AppShell() {
           onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
           className="fixed bottom-20 md:bottom-6 right-6 z-40 w-11 h-11 rounded-2xl text-white flex items-center justify-center hover:shadow-glow transition-all duration-300 animate-fade-in active:scale-90"
           style={{
-            background: 'linear-gradient(135deg, #2962ff 0%, #1e88e5 100%)',
-            boxShadow: '0 4px 16px -4px rgba(41, 98, 255, 0.4)',
+            background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)',
+            boxShadow: '0 4px 16px -4px rgb(var(--accent-rgb) / 0.4)',
           }}
           title={locale === 'de' ? 'Nach oben' : 'Scroll to top'}
           aria-label="Scroll to top"

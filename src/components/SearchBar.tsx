@@ -65,10 +65,10 @@ export default function SearchBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Global shortcut: Ctrl+K or /
+  // Global shortcut: "/" focuses the quick search (Ctrl+K opens the command palette)
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName))) {
+      if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         e.preventDefault();
         inputRef.current?.focus();
         setIsOpen(true);
@@ -128,7 +128,7 @@ export default function SearchBar() {
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Aktie suchen... (Ctrl+K)"
+          placeholder="Aktie suchen... (/)"
           className="input w-full pl-10 pr-10"
         />
         {query && (

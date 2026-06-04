@@ -18,12 +18,17 @@ export interface PriceAlert {
   createdAt: number;
   triggered: boolean;
   triggeredAt?: number;
+  /** When false the alert is paused (kept but not evaluated). Defaults true. */
+  enabled: boolean;
+  /** When true the alert re-arms after firing (edge-triggered, fires again
+   *  once the condition clears and is met anew). Defaults false. */
+  recurring: boolean;
 }
 
 export type AddAlertInput =
-  | { kind: 'price'; symbol: string; targetPrice: number; condition: 'above' | 'below' }
-  | { kind: 'percentChange'; symbol: string; targetPercent: number; condition: 'above' | 'below' }
-  | { kind: 'volumeSpike'; symbol: string; targetMultiplier: number };
+  | { kind: 'price'; symbol: string; targetPrice: number; condition: 'above' | 'below'; recurring?: boolean }
+  | { kind: 'percentChange'; symbol: string; targetPercent: number; condition: 'above' | 'below'; recurring?: boolean }
+  | { kind: 'volumeSpike'; symbol: string; targetMultiplier: number; recurring?: boolean };
 
 interface QuoteForAlert {
   regularMarketPrice: number;
@@ -44,10 +49,12 @@ function loadAlerts(): PriceAlert[] {
     if (!stored) return [];
     const parsed = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    // Backward-compat: alerts saved before kind existed → treat as 'price'
+    // Backward-compat: fill in fields added after the alert was saved.
     return parsed.map((a: PriceAlert) => ({
       ...a,
       kind: a.kind ?? 'price',
+      enabled: a.enabled ?? true,
+      recurring: a.recurring ?? false,
     }));
   } catch {
     return [];
@@ -97,6 +104,8 @@ export function useAlerts() {
       symbol: input.symbol.toUpperCase(),
       createdAt: Date.now(),
       triggered: false,
+      enabled: true,
+      recurring: input.recurring ?? false,
     } as const;
 
     let alert: PriceAlert;
@@ -126,6 +135,12 @@ export function useAlerts() {
     notifiedRef.current.delete(id);
   }, []);
 
+  const toggleAlert = useCallback((id: string) => {
+    // Clear any armed-notification state so re-enabling fires cleanly.
+    notifiedRef.current.delete(id);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)));
+  }, []);
+
   const clearTriggered = useCallback(() => {
     setAlerts((prev) => prev.filter((a) => !a.triggered));
   }, []);
@@ -135,7 +150,8 @@ export function useAlerts() {
       setAlerts((prev) => {
         let changed = false;
         const updated = prev.map((alert) => {
-          if (alert.triggered) return alert;
+          if (alert.enabled === false) return alert;        // paused
+          if (alert.triggered && !alert.recurring) return alert; // one-shot already fired
           const quote = quotes[alert.symbol];
           if (!quote) return alert;
 
@@ -162,26 +178,37 @@ export function useAlerts() {
           }
 
           if (isTriggered) {
-            changed = true;
-            if (!notifiedRef.current.has(alert.id)) {
-              notifiedRef.current.add(alert.id);
-              const title = locale === 'de' ? `Kursalarm: ${alert.symbol}` : `Alert: ${alert.symbol}`;
-              const ccy = quote.currency || 'USD';
-              const body = describeAlert(alert, locale, ccy) +
-                `\n${locale === 'de' ? 'Aktueller Kurs' : 'Current price'}: ${formatPrice(quote.regularMarketPrice, ccy, locale)}`;
+            // Fire the notification only once per "arm" (edge-triggered).
+            if (notifiedRef.current.has(alert.id)) return alert;
+            notifiedRef.current.add(alert.id);
 
-              const electronAPI = (window as unknown as { electronAPI?: { showNotification?: (t: string, b: string) => void } }).electronAPI;
-              if (electronAPI?.showNotification) {
-                electronAPI.showNotification(title, body);
-              } else if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(title, {
-                  body,
-                  icon: '/favicon.ico',
-                  tag: alert.id,
-                });
-              }
+            const title = locale === 'de' ? `Kursalarm: ${alert.symbol}` : `Alert: ${alert.symbol}`;
+            const ccy = quote.currency || 'USD';
+            const body = describeAlert(alert, locale, ccy) +
+              `\n${locale === 'de' ? 'Aktueller Kurs' : 'Current price'}: ${formatPrice(quote.regularMarketPrice, ccy, locale)}`;
+
+            const electronAPI = (window as unknown as { electronAPI?: { showNotification?: (t: string, b: string) => void } }).electronAPI;
+            if (electronAPI?.showNotification) {
+              electronAPI.showNotification(title, body);
+            } else if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(title, {
+                body,
+                icon: '/favicon.ico',
+                tag: alert.id,
+              });
             }
-            return { ...alert, triggered: true, triggeredAt: Date.now() };
+
+            changed = true;
+            // Recurring alerts stay active and re-arm once the condition clears;
+            // one-shot alerts move to the "triggered" list.
+            return alert.recurring
+              ? { ...alert, triggeredAt: Date.now() }
+              : { ...alert, triggered: true, triggeredAt: Date.now() };
+          }
+
+          // Condition not met → re-arm a recurring alert so it can fire again.
+          if (alert.recurring && notifiedRef.current.has(alert.id)) {
+            notifiedRef.current.delete(alert.id);
           }
           return alert;
         });
@@ -200,6 +227,7 @@ export function useAlerts() {
     triggeredAlerts,
     addAlert,
     removeAlert,
+    toggleAlert,
     clearTriggered,
     checkAlerts,
   };

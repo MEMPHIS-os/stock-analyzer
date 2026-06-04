@@ -6,7 +6,8 @@ interface KeyboardShortcutsProps {
 }
 
 const SHORTCUTS = [
-  { keys: 'Ctrl+K', description: 'Aktie suchen' },
+  { keys: 'Ctrl+K', description: 'Befehlspalette öffnen' },
+  { keys: '/', description: 'Aktie suchen' },
   { keys: 'F', description: 'Vollbild-Chart' },
   { keys: '1 - 8', description: 'Zeitraum wählen (1T, 5T, 1M, ...)' },
   { keys: 'C', description: 'Kerzen-Chart' },
