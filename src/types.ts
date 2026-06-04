@@ -166,7 +166,7 @@ export interface FundamentalsData {
   };
 }
 
-export type TimeRange = '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | 'max';
+export type TimeRange = '1d' | '5d' | '1mo' | '3mo' | '6mo' | 'ytd' | '1y' | '2y' | '5y' | 'max';
 export type ChartInterval = '1m' | '5m' | '15m' | '1h' | '1d' | '1wk' | '1mo';
 export type ChartType = 'candlestick' | 'heikinashi' | 'line' | 'area';
 
