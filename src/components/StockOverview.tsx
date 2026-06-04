@@ -68,6 +68,7 @@ export default function StockOverview({ quote }: StockOverviewProps) {
               value={quote.regularMarketPrice}
               currency={cur}
               size={30}
+              board
               className="text-3xl sm:text-4xl font-bold font-mono text-txt-primary tabular-nums tracking-tight"
             />
             <div
