@@ -31,6 +31,7 @@ import {
   Bookmark,
   Save,
   Trash2,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, searchSymbols } from '../api';
 import { useApp } from '../context';
@@ -39,6 +40,7 @@ import type { StockChartRef } from '../components/StockChart';
 import ComparisonChart, { COMPARE_COLORS } from '../components/ComparisonChart';
 import StockOverview from '../components/StockOverview';
 import FundamentalsPanel from '../components/FundamentalsPanel';
+import FinancialStatements from '../components/FinancialStatements';
 import FundPanel from '../components/FundPanel';
 import IndexConstituents from '../components/IndexConstituents';
 import TechnicalSummary from '../components/TechnicalSummary';
@@ -211,10 +213,11 @@ function CompareControl({
   );
 }
 
-type TabType = 'fundamentals' | 'constituents' | 'technical' | 'news' | 'earnings' | 'forecast' | 'fund';
+type TabType = 'fundamentals' | 'financials' | 'constituents' | 'technical' | 'news' | 'earnings' | 'forecast' | 'fund';
 
 const TAB_CONFIG_STOCK: { key: TabType; i18nKey: string; icon: typeof Building2 }[] = [
   { key: 'fundamentals', i18nKey: 'detail.tab.fundamentals', icon: Building2 },
+  { key: 'financials', i18nKey: 'detail.tab.financials', icon: FileSpreadsheet },
   { key: 'technical', i18nKey: 'detail.tab.technical', icon: Activity },
   { key: 'news', i18nKey: 'detail.tab.news', icon: Newspaper },
   { key: 'earnings', i18nKey: 'detail.tab.earnings', icon: CalendarDays },
@@ -1145,6 +1148,7 @@ export default function StockDetail() {
         {activeTab === 'constituents' && isIndex && <IndexConstituents indexSymbol={symbol} />}
         {activeTab === 'fund' && isFund && <FundPanel symbol={symbol} currency={quote?.currency} />}
         {activeTab === 'fundamentals' && !isIndex && <FundamentalsPanel symbol={symbol} currency={quote?.currency} />}
+        {activeTab === 'financials' && !isIndex && <FinancialStatements fundamentals={fundamentals} />}
         {activeTab === 'technical' && <TechnicalSummary data={chartData} />}
         {activeTab === 'news' && <NewsFeed symbol={symbol} />}
         {activeTab === 'earnings' && !isIndex && (

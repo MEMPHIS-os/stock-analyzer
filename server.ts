@@ -370,6 +370,10 @@ app.get('/api/fundamentals/:symbol', async (req, res) => {
       'fundProfile',
       'topHoldings',
       'fundPerformance',
+      // Annual financial statements (income / balance / cashflow)
+      'incomeStatementHistory',
+      'balanceSheetHistory',
+      'cashflowStatementHistory',
     ].join(',');
 
     const data = await yahooFetch(

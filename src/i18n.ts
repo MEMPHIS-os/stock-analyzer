@@ -200,6 +200,7 @@ const de: Translations = {
 
   // Detail Tabs
   'detail.tab.fundamentals': 'Fundamentaldaten',
+  'detail.tab.financials': 'Bilanzen',
   'detail.tab.constituents': 'Bestandteile',
   'detail.tab.technical': 'Technische Analyse',
   'detail.tab.news': 'News',
@@ -467,6 +468,7 @@ const en: Translations = {
 
   // Detail Tabs
   'detail.tab.fundamentals': 'Fundamentals',
+  'detail.tab.financials': 'Financials',
   'detail.tab.constituents': 'Constituents',
   'detail.tab.technical': 'Technical Analysis',
   'detail.tab.news': 'News',
