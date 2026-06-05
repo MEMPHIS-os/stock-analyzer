@@ -1148,7 +1148,7 @@ export default function StockDetail() {
         {activeTab === 'constituents' && isIndex && <IndexConstituents indexSymbol={symbol} />}
         {activeTab === 'fund' && isFund && <FundPanel symbol={symbol} currency={quote?.currency} />}
         {activeTab === 'fundamentals' && !isIndex && <FundamentalsPanel symbol={symbol} currency={quote?.currency} />}
-        {activeTab === 'financials' && !isIndex && <FinancialStatements fundamentals={fundamentals} />}
+        {activeTab === 'financials' && !isIndex && <FinancialStatements symbol={symbol} />}
         {activeTab === 'technical' && <TechnicalSummary data={chartData} />}
         {activeTab === 'news' && <NewsFeed symbol={symbol} />}
         {activeTab === 'earnings' && !isIndex && (

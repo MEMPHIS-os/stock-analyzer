@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
-import type { FundamentalsData } from '../types';
+import { fetchFinancials, type FinancialsData } from '../api';
 import { formatLargeNumber } from '../formatters';
 import { useApp } from '../context';
+import LoadingSpinner from './LoadingSpinner';
 
 type StatementKey = 'income' | 'balance' | 'cashflow';
 
@@ -44,18 +45,28 @@ const CASHFLOW_ROWS: Row[] = [
   { key: 'totalCashFromFinancingActivities', label: 'Cashflow aus Finanzierung', bold: true },
 ];
 
-export default function FinancialStatements({ fundamentals }: { fundamentals: FundamentalsData | null }) {
+export default function FinancialStatements({ symbol }: { symbol: string }) {
   const { locale } = useApp();
   const de = locale === 'de';
   const [tab, setTab] = useState<StatementKey>('income');
+  const [data, setData] = useState<FinancialsData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const statements = useMemo(() => {
-    return {
-      income: fundamentals?.incomeStatementHistory?.incomeStatementHistory || [],
-      balance: fundamentals?.balanceSheetHistory?.balanceSheetStatements || [],
-      cashflow: fundamentals?.cashflowStatementHistory?.cashflowStatements || [],
-    };
-  }, [fundamentals]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchFinancials(symbol)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [symbol]);
+
+  const statements = {
+    income: data?.income || [],
+    balance: data?.balance || [],
+    cashflow: data?.cashflow || [],
+  };
 
   const TABS: { key: StatementKey; label: string }[] = [
     { key: 'income', label: de ? 'Gewinn & Verlust' : 'Income' },
@@ -79,6 +90,14 @@ export default function FinancialStatements({ fundamentals }: { fundamentals: Fu
     'Cashflow aus Finanzierung': 'Financing Cash Flow',
   };
   const label = (l: string) => (de ? l : enLabels[l] || l);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <LoadingSpinner text={de ? 'Lade Finanzberichte...' : 'Loading financials...'} />
+      </div>
+    );
+  }
 
   if (!periods.length) {
     return (

@@ -169,16 +169,6 @@ export interface FundamentalsData {
       returns?: Array<{ year: string; annualValue: number }>;
     };
   };
-  // ─── Annual financial statements (Yahoo v10 history modules) ───
-  incomeStatementHistory?: {
-    incomeStatementHistory?: Array<Record<string, number | undefined> & { endDate?: number }>;
-  };
-  balanceSheetHistory?: {
-    balanceSheetStatements?: Array<Record<string, number | undefined> & { endDate?: number }>;
-  };
-  cashflowStatementHistory?: {
-    cashflowStatements?: Array<Record<string, number | undefined> & { endDate?: number }>;
-  };
 }
 
 export type TimeRange = '1d' | '5d' | '1mo' | '3mo' | '6mo' | 'ytd' | '1y' | '2y' | '5y' | 'max';
