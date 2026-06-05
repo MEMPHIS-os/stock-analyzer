@@ -23,6 +23,11 @@ import {
   GitCompareArrows,
   X,
   Search,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Rewind,
 } from 'lucide-react';
 import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, searchSymbols } from '../api';
 import { useApp } from '../context';
@@ -253,6 +258,12 @@ export default function StockDetail() {
   const [fullscreen, setFullscreen] = useState(false);
   const [yoyEnabled, setYoyEnabled] = useState(false);
   const [logScale, setLogScale] = useState(false);
+  const [showVolProfile, setShowVolProfile] = useState(false);
+  // ─── Bar replay ───
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayIndex, setReplayIndex] = useState(0);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(500); // ms per bar
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
   const [compareData, setCompareData] = useState<Record<string, OHLCVData[]>>({});
   const [chartApi, setChartApi] = useState<import('lightweight-charts').IChartApi | null>(null);
@@ -275,6 +286,51 @@ export default function StockDetail() {
     activeAlerts.filter(a => a.symbol === symbol.toUpperCase()),
     [activeAlerts, symbol]
   );
+
+  // ─── Bar replay: feed the chart a truncated slice while replaying ───
+  const displayChartData = useMemo(
+    () => (replayMode ? chartData.slice(0, replayIndex + 1) : chartData),
+    [replayMode, chartData, replayIndex]
+  );
+
+  // Leaving replay (or a fresh chart load) resets the playhead
+  useEffect(() => {
+    setReplayMode(false);
+    setReplayPlaying(false);
+  }, [symbol, range, chartInterval]);
+
+  const enterReplay = useCallback(() => {
+    if (chartData.length < 5) return;
+    // Start ~60% in so there is both history and "future" to step through
+    setReplayIndex(Math.max(2, Math.floor(chartData.length * 0.6)));
+    setReplayMode(true);
+    setReplayPlaying(false);
+  }, [chartData.length]);
+
+  const exitReplay = useCallback(() => {
+    setReplayMode(false);
+    setReplayPlaying(false);
+  }, []);
+
+  const stepReplay = useCallback((delta: number) => {
+    setReplayPlaying(false);
+    setReplayIndex((i) => Math.min(chartData.length - 1, Math.max(0, i + delta)));
+  }, [chartData.length]);
+
+  // Playback timer
+  useEffect(() => {
+    if (!replayMode || !replayPlaying) return;
+    const id = window.setInterval(() => {
+      setReplayIndex((i) => {
+        if (i >= chartData.length - 1) {
+          setReplayPlaying(false);
+          return i;
+        }
+        return i + 1;
+      });
+    }, replaySpeed);
+    return () => window.clearInterval(id);
+  }, [replayMode, replayPlaying, replaySpeed, chartData.length]);
 
   // Track the chart API instance (updates when chart is recreated)
   useEffect(() => {
@@ -678,9 +734,123 @@ export default function StockDetail() {
         >
           Log
         </button>
+        <button
+          onClick={() => setShowVolProfile((prev) => !prev)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+            showVolProfile
+              ? 'bg-accent/10 text-accent ring-1 ring-accent/20'
+              : 'text-txt-secondary hover:text-txt-primary bg-dark-700/60 ring-1 ring-border/10'
+          }`}
+          title={locale === 'de' ? 'Volume Profile (VPVR)' : 'Volume Profile (VPVR)'}
+        >
+          <BarChart3 className="w-3.5 h-3.5" />
+          VP
+        </button>
+        <button
+          onClick={() => (replayMode ? exitReplay() : enterReplay())}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+            replayMode
+              ? 'bg-accent/10 text-accent ring-1 ring-accent/20'
+              : 'text-txt-secondary hover:text-txt-primary bg-dark-700/60 ring-1 ring-border/10'
+          }`}
+          title={locale === 'de' ? 'Bar-Replay (Historie abspielen)' : 'Bar replay'}
+        >
+          <Play className="w-3.5 h-3.5" />
+          Replay
+        </button>
       </div>
     </>
   );
+
+  // ─── Replay control bar ───
+  const replayBar = () => {
+    if (!replayMode) return null;
+    const bar = chartData[replayIndex];
+    const barDate = bar
+      ? (typeof bar.date === 'number'
+          ? new Date(bar.date * 1000).toLocaleString(locale === 'de' ? 'de-DE' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })
+          : String(bar.date))
+      : '';
+    const atEnd = replayIndex >= chartData.length - 1;
+    const SPEEDS = [
+      { label: '0.5×', ms: 1000 },
+      { label: '1×', ms: 500 },
+      { label: '2×', ms: 250 },
+      { label: '4×', ms: 100 },
+    ];
+    return (
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-xl bg-dark-700/60 ring-1 ring-border/10">
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => stepReplay(-10)}
+            className="p-1.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40 transition-all duration-200"
+            title={locale === 'de' ? '10 Bars zurück' : 'Back 10 bars'}
+          >
+            <Rewind className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => stepReplay(-1)}
+            className="p-1.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40 transition-all duration-200"
+            title={locale === 'de' ? 'Ein Bar zurück' : 'Step back'}
+          >
+            <SkipBack className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setReplayPlaying((p) => !p)}
+            disabled={atEnd}
+            className="p-1.5 rounded-lg bg-accent text-white shadow-glow-sm hover:opacity-90 transition-all duration-200 disabled:opacity-40"
+            title={replayPlaying ? (locale === 'de' ? 'Pause' : 'Pause') : (locale === 'de' ? 'Abspielen' : 'Play')}
+          >
+            {replayPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => stepReplay(1)}
+            className="p-1.5 rounded-lg text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40 transition-all duration-200"
+            title={locale === 'de' ? 'Ein Bar vor' : 'Step forward'}
+          >
+            <SkipForward className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrubber */}
+        <input
+          type="range"
+          min={1}
+          max={Math.max(1, chartData.length - 1)}
+          value={replayIndex}
+          onChange={(e) => { setReplayPlaying(false); setReplayIndex(Number(e.target.value)); }}
+          className="flex-1 min-w-[140px] accent-accent h-1.5 cursor-pointer"
+        />
+
+        <span className="text-xs font-mono text-txt-secondary tabular-nums whitespace-nowrap">
+          {replayIndex + 1}/{chartData.length}
+        </span>
+        <span className="text-xs text-txt-muted whitespace-nowrap hidden sm:inline">{barDate}</span>
+
+        {/* Speed */}
+        <div className="flex gap-0.5 bg-dark-800/60 ring-1 ring-border/10 rounded-lg p-0.5">
+          {SPEEDS.map((s) => (
+            <button
+              key={s.ms}
+              onClick={() => setReplaySpeed(s.ms)}
+              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all duration-200 ${
+                replaySpeed === s.ms ? 'bg-accent text-white' : 'text-txt-secondary hover:text-txt-primary'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={exitReplay}
+          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-txt-secondary hover:text-danger hover:bg-danger/10 transition-all duration-200"
+        >
+          {locale === 'de' ? 'Beenden' : 'Exit'}
+        </button>
+      </div>
+    );
+  };
 
   // Fullscreen chart overlay
   if (fullscreen) {
@@ -723,16 +893,18 @@ export default function StockDetail() {
           ) : (
             <StockChart
               ref={chartRef}
-              data={chartData}
+              data={displayChartData}
               chartType={chartType}
               indicators={indicators}
-              height={window.innerHeight - 56}
+              height={window.innerHeight - (replayMode ? 104 : 56)}
               currency={quote?.currency}
               alertLevels={symbolAlerts}
               logScale={logScale}
+              showVolumeProfile={showVolProfile}
             />
           )}
         </div>
+        {!compareMode && replayMode && <div className="px-4 py-2 bg-dark-800 border-t border-border/30">{replayBar()}</div>}
       </div>
     );
   }
@@ -808,6 +980,9 @@ export default function StockDetail() {
         </div>
       )}
 
+      {/* Replay control bar */}
+      {!compareMode && replayMode && replayBar()}
+
       {/* Chart with Drawing Toolbar */}
       <div className="flex gap-2">
         {!compareMode && (
@@ -832,9 +1007,10 @@ export default function StockDetail() {
           ) : (
             <StockChart
               ref={chartRef}
-              data={chartData}
+              data={displayChartData}
               chartType={chartType}
               indicators={indicators}
+              showVolumeProfile={showVolProfile}
               drawings={drawings}
               onChartClick={handleChartClick}
               onRemoveDrawing={removeDrawing}

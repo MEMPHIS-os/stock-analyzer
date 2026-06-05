@@ -43,6 +43,7 @@ interface StockChartProps {
   currency?: string;
   alertLevels?: PriceAlert[];
   logScale?: boolean;
+  showVolumeProfile?: boolean;
 }
 
 const INDICATOR_COLORS: Record<string, string> = {
@@ -66,7 +67,7 @@ const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_COLORS = ['#ef5350', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#7e57c2', '#ef5350'];
 
 const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChart(
-  { data, chartType, indicators, height = 480, drawings = [], onChartClick, onRemoveDrawing, onUpdateDrawing, drawingActive = false, pendingTextPoint, onConfirmText, onCancelText, markers = [], currency = 'USD', alertLevels = [], logScale = false },
+  { data, chartType, indicators, height = 480, drawings = [], onChartClick, onRemoveDrawing, onUpdateDrawing, drawingActive = false, pendingTextPoint, onConfirmText, onCancelText, markers = [], currency = 'USD', alertLevels = [], logScale = false, showVolumeProfile = false },
   ref
 ) {
   const mainChartRef = useRef<HTMLDivElement>(null);
@@ -536,6 +537,48 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       svg.setAttribute('height', String(h2));
       svg.innerHTML = '';
 
+      // ─── Volume Profile (VPVR) ───
+      if (showVolumeProfile && data.length > 1) {
+        const SVGNS = 'http://www.w3.org/2000/svg';
+        let lo = Infinity, hi = -Infinity;
+        for (const d of data) { if (d.low < lo) lo = d.low; if (d.high > hi) hi = d.high; }
+        if (isFinite(lo) && isFinite(hi) && hi > lo) {
+          const BUCKETS = Math.min(48, Math.max(16, Math.round(h2 / 14)));
+          const step = (hi - lo) / BUCKETS;
+          const vol = new Array(BUCKETS).fill(0);
+          for (const d of data) {
+            // distribute each bar's volume across the buckets it spans (high→low)
+            const bLo = Math.max(0, Math.floor((d.low - lo) / step));
+            const bHi = Math.min(BUCKETS - 1, Math.floor((d.high - lo) / step));
+            const span = bHi - bLo + 1;
+            const per = d.volume / span;
+            for (let b = bLo; b <= bHi; b++) vol[b] += per;
+          }
+          const maxVol = Math.max(...vol, 1);
+          let pocIdx = 0;
+          for (let b = 1; b < BUCKETS; b++) if (vol[b] > vol[pocIdx]) pocIdx = b;
+          const maxBarW = Math.min(180, w * 0.28);
+          const group = document.createElementNS(SVGNS, 'g');
+          group.setAttribute('pointer-events', 'none');
+          for (let b = 0; b < BUCKETS; b++) {
+            if (vol[b] <= 0) continue;
+            const yTop = priceSeries.priceToCoordinate(lo + (b + 1) * step);
+            const yBot = priceSeries.priceToCoordinate(lo + b * step);
+            if (yTop == null || yBot == null) continue;
+            const barH = Math.max(1, yBot - yTop - 1);
+            const barW = (vol[b] / maxVol) * maxBarW;
+            const rect = document.createElementNS(SVGNS, 'rect');
+            rect.setAttribute('x', String(w - barW));
+            rect.setAttribute('y', String(yTop + 0.5));
+            rect.setAttribute('width', String(barW));
+            rect.setAttribute('height', String(barH));
+            rect.setAttribute('fill', b === pocIdx ? 'rgba(255,152,0,0.45)' : 'rgba(120,140,200,0.28)');
+            group.appendChild(rect);
+          }
+          svg.appendChild(group);
+        }
+      }
+
       // Render text annotations as SVG
       const textDrawings = drawings.filter((d) => d.type === 'text');
       for (const drawing of textDrawings) {
@@ -818,7 +861,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       priceSeriesRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, displayData, chartType, indicators, closes, times, dataMap, height, createChartOptions, chartColors, drawings, alertLevels, logScale]);
+  }, [data, displayData, chartType, indicators, closes, times, dataMap, height, createChartOptions, chartColors, drawings, alertLevels, logScale, showVolumeProfile]);
 
   // Drag handler for text annotations
   useEffect(() => {
