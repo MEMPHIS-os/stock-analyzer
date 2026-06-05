@@ -28,6 +28,9 @@ import {
   SkipBack,
   SkipForward,
   Rewind,
+  Bookmark,
+  Save,
+  Trash2,
 } from 'lucide-react';
 import { fetchQuote, fetchChart, fetchFundamentals, fetchNews, searchSymbols } from '../api';
 import { useApp } from '../context';
@@ -47,6 +50,7 @@ import { SkeletonStockOverview, SkeletonChart, SkeletonBlock } from '../componen
 import DrawingToolbar from '../components/DrawingToolbar';
 import { YoYToggleButton, useYoYOverlay } from '../components/YoYOverlay';
 import { useDrawings } from '../hooks/useDrawings';
+import { useChartTemplates } from '../hooks/useChartTemplates';
 import { downloadScreenshotFromCanvas, exportOHLCVtoCSV } from '../exportUtils';
 import { buildEarningsMarkers } from '../utils/earningsMarkers';
 import { generateStockReport } from '../utils/pdfReport';
@@ -272,6 +276,9 @@ export default function StockDetail() {
   const [newsCount, setNewsCount] = useState<number | null>(null);
   const [indicatorDropdownOpen, setIndicatorDropdownOpen] = useState(false);
   const indicatorDropdownRef = useRef<HTMLDivElement>(null);
+  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
+  const templateDropdownRef = useRef<HTMLDivElement>(null);
+  const { templates, userTemplates, saveTemplate, deleteTemplate } = useChartTemplates();
   const chartRef = useRef<StockChartRef>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
@@ -566,6 +573,28 @@ export default function StockDetail() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [indicatorDropdownOpen]);
 
+  useEffect(() => {
+    if (!templateDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (templateDropdownRef.current && !templateDropdownRef.current.contains(e.target as Node)) {
+        setTemplateDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [templateDropdownOpen]);
+
+  function applyTemplate(tpl: { indicators: IndicatorType[]; chartType: ChartType }) {
+    setIndicators([...tpl.indicators]);
+    setChartType(tpl.chartType);
+    setTemplateDropdownOpen(false);
+  }
+
+  function handleSaveTemplate() {
+    const name = window.prompt(locale === 'de' ? 'Name der Vorlage:' : 'Template name:');
+    if (name) saveTemplate(name, indicators, chartType);
+  }
+
   function toggleIndicator(ind: IndicatorType) {
     setIndicators((prev) =>
       prev.includes(ind) ? prev.filter((i) => i !== ind) : [...prev, ind]
@@ -714,6 +743,59 @@ export default function StockDetail() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Template dropdown */}
+        <div className="relative" ref={templateDropdownRef}>
+          <button
+            onClick={() => setTemplateDropdownOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+              templateDropdownOpen
+                ? 'bg-accent/10 text-accent ring-1 ring-accent/20'
+                : 'text-txt-secondary hover:text-txt-primary bg-dark-700/60 ring-1 ring-border/10'
+            }`}
+            title={locale === 'de' ? 'Chart-Vorlagen' : 'Chart templates'}
+          >
+            <Bookmark className="w-3.5 h-3.5" />
+            {locale === 'de' ? 'Vorlagen' : 'Templates'}
+            <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${templateDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {templateDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1.5 w-64 card border border-border/20 rounded-xl shadow-depth-lg z-30 py-1.5 animate-scale-in">
+              {templates.map((tpl) => {
+                const isUser = userTemplates.some((u) => u.id === tpl.id);
+                return (
+                  <div
+                    key={tpl.id}
+                    className="group w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-dark-600/40 transition-colors"
+                  >
+                    <button onClick={() => applyTemplate(tpl)} className="flex-1 text-left text-txt-primary truncate">
+                      {tpl.name}
+                      <span className="ml-1.5 text-[10px] text-txt-muted">{tpl.indicators.length} Ind.</span>
+                    </button>
+                    {isUser && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteTemplate(tpl.id); }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-txt-muted hover:text-danger transition-all"
+                        title={locale === 'de' ? 'Löschen' : 'Delete'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="border-t border-border/20 mt-1 pt-1">
+                <button
+                  onClick={handleSaveTemplate}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-accent font-medium hover:bg-dark-600/40 transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {locale === 'de' ? 'Aktuelles Setup speichern…' : 'Save current setup…'}
+                </button>
+              </div>
             </div>
           )}
         </div>
