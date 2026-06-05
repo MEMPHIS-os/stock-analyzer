@@ -18,6 +18,7 @@ import {
   FlaskConical,
   ChevronDown,
   PiggyBank,
+  Flame,
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import { useApp } from '../context';
@@ -50,6 +51,7 @@ export default function Header() {
   ];
 
   const moreNav = [
+    { path: '/hotlists', label: t('nav.hotlists'), icon: Flame },
     { path: '/heatmap', label: t('nav.heatmap'), icon: Grid3x3 },
     { path: '/multi', label: t('nav.multiChart'), icon: LayoutGrid },
     { path: '/compare', label: t('nav.compare'), icon: GitCompareArrows },

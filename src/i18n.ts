@@ -6,6 +6,7 @@ type Translations = Record<string, string>;
 const de: Translations = {
   // Header & Nav
   'nav.dashboard': 'Dashboard',
+  'nav.hotlists': 'Hotlists',
   'nav.heatmap': 'Heatmap',
   'nav.screener': 'Screener',
   'nav.multiChart': 'Multi-Chart',
@@ -286,6 +287,7 @@ const de: Translations = {
 // English translations
 const en: Translations = {
   'nav.dashboard': 'Dashboard',
+  'nav.hotlists': 'Hotlists',
   'nav.heatmap': 'Heatmap',
   'nav.screener': 'Screener',
   'nav.multiChart': 'Multi-Chart',
