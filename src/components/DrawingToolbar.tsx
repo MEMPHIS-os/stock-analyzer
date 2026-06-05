@@ -1,4 +1,4 @@
-import { Minus, TrendingUp, Layers, Trash2, MousePointer, Type, Ruler } from 'lucide-react';
+import { Minus, TrendingUp, Layers, Trash2, MousePointer, Type, Ruler, MoveUpRight, Square } from 'lucide-react';
 import type { DrawingTool } from '../hooks/useDrawings';
 
 interface DrawingToolbarProps {
@@ -13,6 +13,8 @@ const TOOLS: { value: DrawingTool; label: string; icon: typeof Minus; hint: stri
   { value: 'none', label: 'Auswahl', icon: MousePointer, hint: 'Kein Werkzeug' },
   { value: 'hline', label: 'H-Linie', icon: Minus, hint: '1 Klick: Horizontale Linie' },
   { value: 'trendline', label: 'Trend', icon: TrendingUp, hint: '2 Klicks: Trendlinie' },
+  { value: 'ray', label: 'Strahl', icon: MoveUpRight, hint: '2 Klicks: verlängerte Linie (Ray)' },
+  { value: 'rectangle', label: 'Zone', icon: Square, hint: '2 Klicks: Rechteck/Zone' },
   { value: 'fibonacci', label: 'Fib', icon: Layers, hint: '2 Klicks: Fibonacci-Retracement' },
   { value: 'text', label: 'Text', icon: Type, hint: '1 Klick: Textanmerkung' },
   { value: 'ruler', label: 'Messen', icon: Ruler, hint: '2 Klicks: Preisdifferenz messen' },

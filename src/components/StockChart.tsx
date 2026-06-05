@@ -757,7 +757,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
         svg.appendChild(hitLine);
       }
 
-      const lineDrawings = drawings.filter((d) => d.type === 'trendline' || d.type === 'fibonacci');
+      const lineDrawings = drawings.filter((d) => d.type === 'trendline' || d.type === 'fibonacci' || d.type === 'ray' || d.type === 'rectangle');
       for (const drawing of lineDrawings) {
         if (drawing.points.length < 2) continue;
         const p1 = drawing.points[0];
@@ -795,6 +795,63 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
             if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
           });
           svg.appendChild(hitLine);
+        }
+
+        if (drawing.type === 'ray') {
+          // Extend the line through p1→p2 to the right edge of the chart.
+          let ex: number = x2, ey: number = y2;
+          if (x2 !== x1) {
+            const slope = (y2 - y1) / (x2 - x1);
+            ex = w;
+            ey = y1 + slope * (w - x1);
+          } else {
+            ey = h2; // vertical ray
+          }
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', String(x1));
+          line.setAttribute('y1', String(y1));
+          line.setAttribute('x2', String(ex));
+          line.setAttribute('y2', String(ey));
+          line.setAttribute('stroke', drawing.color);
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-linecap', 'round');
+          svg.appendChild(line);
+
+          const hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          hitLine.setAttribute('x1', String(x1));
+          hitLine.setAttribute('y1', String(y1));
+          hitLine.setAttribute('x2', String(ex));
+          hitLine.setAttribute('y2', String(ey));
+          hitLine.setAttribute('stroke', 'transparent');
+          hitLine.setAttribute('stroke-width', '10');
+          hitLine.setAttribute('cursor', 'pointer');
+          hitLine.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
+          });
+          svg.appendChild(hitLine);
+        }
+
+        if (drawing.type === 'rectangle') {
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', String(rx));
+          rect.setAttribute('y', String(ry));
+          rect.setAttribute('width', String(rw));
+          rect.setAttribute('height', String(rh));
+          rect.setAttribute('fill', drawing.color);
+          rect.setAttribute('fill-opacity', '0.12');
+          rect.setAttribute('stroke', drawing.color);
+          rect.setAttribute('stroke-width', '1.5');
+          rect.setAttribute('cursor', 'pointer');
+          rect.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
+          });
+          svg.appendChild(rect);
         }
 
         if (drawing.type === 'fibonacci') {
