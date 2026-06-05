@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useAlerts } from './hooks/useAlerts';
 import type { PriceAlert, AddAlertInput } from './hooks/useAlerts';
+import { useIndicatorAlerts } from './hooks/useIndicatorAlerts';
 import type { WatchlistItem } from './types';
 import { t as translate, type Locale } from './i18n';
 import { fetchExchangeRate } from './api';
@@ -81,7 +82,8 @@ interface AppState {
       string,
       { regularMarketPrice: number; regularMarketChangePercent?: number; regularMarketVolume?: number; averageVolume?: number; averageDailyVolume3Month?: number; averageDailyVolume10Day?: number; currency?: string }
     >,
-    locale?: 'de' | 'en'
+    locale?: 'de' | 'en',
+    metrics?: Record<string, { rsi?: number }>
   ) => void;
   alertsPanelOpen: boolean;
   setAlertsPanelOpen: (open: boolean) => void;
@@ -181,6 +183,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearTriggered,
     checkAlerts,
   } = useAlerts();
+
+  // Background evaluator for indicator (RSI) alerts.
+  useIndicatorAlerts(alerts, checkAlerts, locale);
 
   useEffect(() => {
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
