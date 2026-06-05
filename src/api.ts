@@ -44,6 +44,18 @@ export async function searchSymbols(query: string): Promise<SearchResult[]> {
   return data.quotes || [];
 }
 
+export type StatementPeriod = Record<string, number | undefined> & { endDate?: number };
+export interface FinancialsData {
+  income: StatementPeriod[];
+  balance: StatementPeriod[];
+  cashflow: StatementPeriod[];
+}
+
+export async function fetchFinancials(symbol: string): Promise<FinancialsData> {
+  const { data } = await api.get(`/financials/${encodeURIComponent(symbol)}`);
+  return data;
+}
+
 export async function fetchFundamentals(symbol: string): Promise<FundamentalsData> {
   const { data } = await api.get(`/fundamentals/${encodeURIComponent(symbol)}`);
   return data;

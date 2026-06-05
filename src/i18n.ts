@@ -6,6 +6,8 @@ type Translations = Record<string, string>;
 const de: Translations = {
   // Header & Nav
   'nav.dashboard': 'Dashboard',
+  'nav.hotlists': 'Hotlists',
+  'nav.calendar': 'Wirtschaftskalender',
   'nav.heatmap': 'Heatmap',
   'nav.screener': 'Screener',
   'nav.multiChart': 'Multi-Chart',
@@ -199,6 +201,7 @@ const de: Translations = {
 
   // Detail Tabs
   'detail.tab.fundamentals': 'Fundamentaldaten',
+  'detail.tab.financials': 'Bilanzen',
   'detail.tab.constituents': 'Bestandteile',
   'detail.tab.technical': 'Technische Analyse',
   'detail.tab.news': 'News',
@@ -286,6 +289,8 @@ const de: Translations = {
 // English translations
 const en: Translations = {
   'nav.dashboard': 'Dashboard',
+  'nav.hotlists': 'Hotlists',
+  'nav.calendar': 'Economic Calendar',
   'nav.heatmap': 'Heatmap',
   'nav.screener': 'Screener',
   'nav.multiChart': 'Multi-Chart',
@@ -465,6 +470,7 @@ const en: Translations = {
 
   // Detail Tabs
   'detail.tab.fundamentals': 'Fundamentals',
+  'detail.tab.financials': 'Financials',
   'detail.tab.constituents': 'Constituents',
   'detail.tab.technical': 'Technical Analysis',
   'detail.tab.news': 'News',

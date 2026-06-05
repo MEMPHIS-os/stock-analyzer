@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatPrice } from '../formatters';
 
-export type AlertKind = 'price' | 'percentChange' | 'volumeSpike';
+export type AlertKind = 'price' | 'percentChange' | 'volumeSpike' | 'rsi';
 
 export interface PriceAlert {
   id: string;
@@ -13,7 +13,11 @@ export interface PriceAlert {
   targetPercent?: number;
   /** For kind='volumeSpike': multiplier of average volume (e.g. 2 = 2x). */
   targetMultiplier?: number;
-  /** For 'price' & 'percentChange': direction. 'volumeSpike' ignores this. */
+  /** For kind='rsi': the RSI level (0-100) to cross. */
+  targetLevel?: number;
+  /** For kind='rsi': RSI look-back period (default 14). */
+  period?: number;
+  /** For 'price', 'percentChange' & 'rsi': direction. 'volumeSpike' ignores this. */
   condition: 'above' | 'below';
   createdAt: number;
   triggered: boolean;
@@ -28,7 +32,8 @@ export interface PriceAlert {
 export type AddAlertInput =
   | { kind: 'price'; symbol: string; targetPrice: number; condition: 'above' | 'below'; recurring?: boolean }
   | { kind: 'percentChange'; symbol: string; targetPercent: number; condition: 'above' | 'below'; recurring?: boolean }
-  | { kind: 'volumeSpike'; symbol: string; targetMultiplier: number; recurring?: boolean };
+  | { kind: 'volumeSpike'; symbol: string; targetMultiplier: number; recurring?: boolean }
+  | { kind: 'rsi'; symbol: string; targetLevel: number; period?: number; condition: 'above' | 'below'; recurring?: boolean };
 
 interface QuoteForAlert {
   regularMarketPrice: number;
@@ -39,6 +44,12 @@ interface QuoteForAlert {
   averageDailyVolume3Month?: number;
   averageDailyVolume10Day?: number;
   currency?: string;
+}
+
+/** Optional computed metrics (e.g. RSI) keyed by symbol, supplied by the
+ *  background indicator-alert evaluator. */
+export interface AlertMetrics {
+  rsi?: number;
 }
 
 const ALERTS_KEY = 'stockanalyzer_alerts';
@@ -77,6 +88,12 @@ function describeAlert(alert: PriceAlert, locale: 'de' | 'en', currency = 'USD')
     return de
       ? `${alert.symbol} Volumen ≥ ${alert.targetMultiplier}× Ø`
       : `${alert.symbol} volume ≥ ${alert.targetMultiplier}× avg`;
+  }
+  if (alert.kind === 'rsi') {
+    const dir = alert.condition === 'above' ? '≥' : '≤';
+    return de
+      ? `${alert.symbol} RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`
+      : `${alert.symbol} RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`;
   }
   const word = alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below');
   return `${alert.symbol} ${word} ${formatPrice(alert.targetPrice ?? 0, currency, locale)}`;
@@ -118,12 +135,20 @@ export function useAlerts() {
         targetPercent: input.targetPercent,
         condition: input.condition,
       };
-    } else {
+    } else if (input.kind === 'volumeSpike') {
       alert = {
         ...base,
         kind: 'volumeSpike',
         targetMultiplier: input.targetMultiplier,
         condition: 'above',
+      };
+    } else {
+      alert = {
+        ...base,
+        kind: 'rsi',
+        targetLevel: input.targetLevel,
+        period: input.period ?? 14,
+        condition: input.condition,
       };
     }
     setAlerts((prev) => [...prev, alert]);
@@ -146,7 +171,11 @@ export function useAlerts() {
   }, []);
 
   const checkAlerts = useCallback(
-    (quotes: Record<string, QuoteForAlert>, locale: 'de' | 'en' = 'de') => {
+    (
+      quotes: Record<string, QuoteForAlert>,
+      locale: 'de' | 'en' = 'de',
+      metrics: Record<string, AlertMetrics> = {},
+    ) => {
       setAlerts((prev) => {
         let changed = false;
         const updated = prev.map((alert) => {
@@ -174,6 +203,13 @@ export function useAlerts() {
             const avg = quote.averageVolume ?? quote.averageDailyVolume3Month ?? quote.averageDailyVolume10Day;
             if (vol != null && avg != null && avg > 0) {
               isTriggered = vol >= avg * alert.targetMultiplier;
+            }
+          } else if (alert.kind === 'rsi' && alert.targetLevel != null) {
+            const rsi = metrics[alert.symbol]?.rsi;
+            if (rsi != null && !isNaN(rsi)) {
+              isTriggered =
+                (alert.condition === 'above' && rsi >= alert.targetLevel) ||
+                (alert.condition === 'below' && rsi <= alert.targetLevel);
             }
           }
 

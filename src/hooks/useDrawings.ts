@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 
-export type DrawingTool = 'none' | 'hline' | 'trendline' | 'fibonacci' | 'text' | 'ruler';
+export type DrawingTool = 'none' | 'hline' | 'trendline' | 'ray' | 'rectangle' | 'fibonacci' | 'text' | 'ruler';
 
 export interface Drawing {
   id: string;
-  type: 'hline' | 'trendline' | 'fibonacci' | 'text' | 'ruler';
+  type: 'hline' | 'trendline' | 'ray' | 'rectangle' | 'fibonacci' | 'text' | 'ruler';
   points: { time: string; price: number }[];
   color: string;
   text?: string;
@@ -121,6 +121,22 @@ export function useDrawings(symbol: string) {
         if (newPoints.length >= 2) {
           addDrawing({
             type: 'fibonacci',
+            points: newPoints,
+            color: nextColor(),
+          });
+          setPendingPoints([]);
+          setActiveTool('none');
+        } else {
+          setPendingPoints(newPoints);
+        }
+        return;
+      }
+
+      if (activeTool === 'ray' || activeTool === 'rectangle') {
+        const newPoints = [...pendingPoints, { time, price }];
+        if (newPoints.length >= 2) {
+          addDrawing({
+            type: activeTool,
             points: newPoints,
             color: nextColor(),
           });

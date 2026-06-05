@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign, Pause, Play, Repeat } from 'lucide-react';
+import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign, Pause, Play, Repeat, Activity } from 'lucide-react';
 import type { PriceAlert, AddAlertInput, AlertKind } from '../hooks/useAlerts';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
@@ -25,6 +25,7 @@ const KIND_META: Record<AlertKind, { de: string; en: string; icon: typeof Dollar
   price: { de: 'Kurs', en: 'Price', icon: DollarSign },
   percentChange: { de: '% Tag', en: '% Day', icon: Percent },
   volumeSpike: { de: 'Volumen', en: 'Volume', icon: BarChart3 },
+  rsi: { de: 'RSI', en: 'RSI', icon: Activity },
 };
 
 export default function AlertsPanel({
@@ -44,6 +45,7 @@ export default function AlertsPanel({
   const [value, setValue] = useState('');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
   const [recurring, setRecurring] = useState(false);
+  const [rsiPeriod, setRsiPeriod] = useState('14');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,8 +57,11 @@ export default function AlertsPanel({
       onAdd({ kind: 'price', symbol: sym, targetPrice: v, condition, recurring });
     } else if (kind === 'percentChange') {
       onAdd({ kind: 'percentChange', symbol: sym, targetPercent: v, condition, recurring });
-    } else {
+    } else if (kind === 'volumeSpike') {
       onAdd({ kind: 'volumeSpike', symbol: sym, targetMultiplier: v, recurring });
+    } else {
+      const p = parseInt(rsiPeriod, 10);
+      onAdd({ kind: 'rsi', symbol: sym, targetLevel: v, period: isNaN(p) || p < 2 ? 14 : p, condition, recurring });
     }
     showToast(t('toast.alertCreated'), 'success');
     setSymbol('');
@@ -71,10 +76,15 @@ export default function AlertsPanel({
     if (alert.kind === 'volumeSpike') {
       return `${de ? 'Volumen ≥' : 'volume ≥'} ${alert.targetMultiplier}× ${de ? 'Ø' : 'avg'}`;
     }
+    if (alert.kind === 'rsi') {
+      const dir = alert.condition === 'above' ? '≥' : '≤';
+      return `RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`;
+    }
     return `${alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below')} ${fp(alert.targetPrice ?? 0)}`;
   }
 
   function alertIcon(alert: PriceAlert) {
+    if (alert.kind === 'rsi') return <Activity className="w-3.5 h-3.5 text-accent" />;
     if (alert.kind === 'volumeSpike') return <BarChart3 className="w-3.5 h-3.5 text-accent" />;
     if (alert.kind === 'percentChange') {
       return alert.condition === 'above'
@@ -89,12 +99,14 @@ export default function AlertsPanel({
   function valueLabel(): string {
     if (kind === 'price') return de ? 'Kurs' : 'Price';
     if (kind === 'percentChange') return '%';
+    if (kind === 'rsi') return de ? 'RSI-Level' : 'RSI level';
     return de ? 'Faktor (z.B. 2)' : 'Factor (e.g. 2)';
   }
 
   function valuePlaceholder(): string {
     if (kind === 'price') return '150.00';
     if (kind === 'percentChange') return '5';
+    if (kind === 'rsi') return '70';
     return '2';
   }
 
@@ -148,7 +160,7 @@ export default function AlertsPanel({
             <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium mb-1.5 block">
               {de ? 'Alarmtyp' : 'Alert type'}
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
               {(Object.keys(KIND_META) as AlertKind[]).map((k) => {
                 const meta = KIND_META[k];
                 const Icon = meta.icon;
@@ -213,6 +225,22 @@ export default function AlertsPanel({
                 className="input w-full text-sm mt-1"
               />
             </div>
+            {kind === 'rsi' && (
+              <div className="w-20">
+                <label className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">
+                  {de ? 'Periode' : 'Period'}
+                </label>
+                <input
+                  type="number"
+                  min="2"
+                  step="1"
+                  value={rsiPeriod}
+                  onChange={(e) => setRsiPeriod(e.target.value)}
+                  placeholder="14"
+                  className="input w-full text-sm mt-1"
+                />
+              </div>
+            )}
             <button
               type="submit"
               className="btn-primary flex items-center gap-1.5 shrink-0 px-3.5 py-2.5"
@@ -252,6 +280,9 @@ export default function AlertsPanel({
             {kind === 'volumeSpike' && (de
               ? 'Wird ausgelöst, wenn das aktuelle Volumen das durchschnittliche um den Faktor übersteigt.'
               : 'Triggers when current volume exceeds the average by the given factor.')}
+            {kind === 'rsi' && (de
+              ? 'Wird ausgelöst, wenn der RSI (Tageskerzen) das Level über- bzw. unterschreitet. Wird im Hintergrund ca. minütlich geprüft.'
+              : 'Triggers when the RSI (daily) crosses the level. Evaluated in the background roughly every minute.')}
           </p>
         </form>
 

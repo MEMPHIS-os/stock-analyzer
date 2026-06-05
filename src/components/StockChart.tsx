@@ -43,6 +43,7 @@ interface StockChartProps {
   currency?: string;
   alertLevels?: PriceAlert[];
   logScale?: boolean;
+  showVolumeProfile?: boolean;
 }
 
 const INDICATOR_COLORS: Record<string, string> = {
@@ -66,7 +67,7 @@ const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_COLORS = ['#ef5350', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#7e57c2', '#ef5350'];
 
 const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChart(
-  { data, chartType, indicators, height = 480, drawings = [], onChartClick, onRemoveDrawing, onUpdateDrawing, drawingActive = false, pendingTextPoint, onConfirmText, onCancelText, markers = [], currency = 'USD', alertLevels = [], logScale = false },
+  { data, chartType, indicators, height = 480, drawings = [], onChartClick, onRemoveDrawing, onUpdateDrawing, drawingActive = false, pendingTextPoint, onConfirmText, onCancelText, markers = [], currency = 'USD', alertLevels = [], logScale = false, showVolumeProfile = false },
   ref
 ) {
   const mainChartRef = useRef<HTMLDivElement>(null);
@@ -536,6 +537,48 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       svg.setAttribute('height', String(h2));
       svg.innerHTML = '';
 
+      // ─── Volume Profile (VPVR) ───
+      if (showVolumeProfile && data.length > 1) {
+        const SVGNS = 'http://www.w3.org/2000/svg';
+        let lo = Infinity, hi = -Infinity;
+        for (const d of data) { if (d.low < lo) lo = d.low; if (d.high > hi) hi = d.high; }
+        if (isFinite(lo) && isFinite(hi) && hi > lo) {
+          const BUCKETS = Math.min(48, Math.max(16, Math.round(h2 / 14)));
+          const step = (hi - lo) / BUCKETS;
+          const vol = new Array(BUCKETS).fill(0);
+          for (const d of data) {
+            // distribute each bar's volume across the buckets it spans (high→low)
+            const bLo = Math.max(0, Math.floor((d.low - lo) / step));
+            const bHi = Math.min(BUCKETS - 1, Math.floor((d.high - lo) / step));
+            const span = bHi - bLo + 1;
+            const per = d.volume / span;
+            for (let b = bLo; b <= bHi; b++) vol[b] += per;
+          }
+          const maxVol = Math.max(...vol, 1);
+          let pocIdx = 0;
+          for (let b = 1; b < BUCKETS; b++) if (vol[b] > vol[pocIdx]) pocIdx = b;
+          const maxBarW = Math.min(180, w * 0.28);
+          const group = document.createElementNS(SVGNS, 'g');
+          group.setAttribute('pointer-events', 'none');
+          for (let b = 0; b < BUCKETS; b++) {
+            if (vol[b] <= 0) continue;
+            const yTop = priceSeries.priceToCoordinate(lo + (b + 1) * step);
+            const yBot = priceSeries.priceToCoordinate(lo + b * step);
+            if (yTop == null || yBot == null) continue;
+            const barH = Math.max(1, yBot - yTop - 1);
+            const barW = (vol[b] / maxVol) * maxBarW;
+            const rect = document.createElementNS(SVGNS, 'rect');
+            rect.setAttribute('x', String(w - barW));
+            rect.setAttribute('y', String(yTop + 0.5));
+            rect.setAttribute('width', String(barW));
+            rect.setAttribute('height', String(barH));
+            rect.setAttribute('fill', b === pocIdx ? 'rgba(255,152,0,0.45)' : 'rgba(120,140,200,0.28)');
+            group.appendChild(rect);
+          }
+          svg.appendChild(group);
+        }
+      }
+
       // Render text annotations as SVG
       const textDrawings = drawings.filter((d) => d.type === 'text');
       for (const drawing of textDrawings) {
@@ -714,7 +757,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
         svg.appendChild(hitLine);
       }
 
-      const lineDrawings = drawings.filter((d) => d.type === 'trendline' || d.type === 'fibonacci');
+      const lineDrawings = drawings.filter((d) => d.type === 'trendline' || d.type === 'fibonacci' || d.type === 'ray' || d.type === 'rectangle');
       for (const drawing of lineDrawings) {
         if (drawing.points.length < 2) continue;
         const p1 = drawing.points[0];
@@ -752,6 +795,63 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
             if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
           });
           svg.appendChild(hitLine);
+        }
+
+        if (drawing.type === 'ray') {
+          // Extend the line through p1→p2 to the right edge of the chart.
+          let ex: number = x2, ey: number = y2;
+          if (x2 !== x1) {
+            const slope = (y2 - y1) / (x2 - x1);
+            ex = w;
+            ey = y1 + slope * (w - x1);
+          } else {
+            ey = h2; // vertical ray
+          }
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', String(x1));
+          line.setAttribute('y1', String(y1));
+          line.setAttribute('x2', String(ex));
+          line.setAttribute('y2', String(ey));
+          line.setAttribute('stroke', drawing.color);
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-linecap', 'round');
+          svg.appendChild(line);
+
+          const hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          hitLine.setAttribute('x1', String(x1));
+          hitLine.setAttribute('y1', String(y1));
+          hitLine.setAttribute('x2', String(ex));
+          hitLine.setAttribute('y2', String(ey));
+          hitLine.setAttribute('stroke', 'transparent');
+          hitLine.setAttribute('stroke-width', '10');
+          hitLine.setAttribute('cursor', 'pointer');
+          hitLine.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
+          });
+          svg.appendChild(hitLine);
+        }
+
+        if (drawing.type === 'rectangle') {
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', String(rx));
+          rect.setAttribute('y', String(ry));
+          rect.setAttribute('width', String(rw));
+          rect.setAttribute('height', String(rh));
+          rect.setAttribute('fill', drawing.color);
+          rect.setAttribute('fill-opacity', '0.12');
+          rect.setAttribute('stroke', drawing.color);
+          rect.setAttribute('stroke-width', '1.5');
+          rect.setAttribute('cursor', 'pointer');
+          rect.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
+          });
+          svg.appendChild(rect);
         }
 
         if (drawing.type === 'fibonacci') {
@@ -818,7 +918,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       priceSeriesRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, displayData, chartType, indicators, closes, times, dataMap, height, createChartOptions, chartColors, drawings, alertLevels, logScale]);
+  }, [data, displayData, chartType, indicators, closes, times, dataMap, height, createChartOptions, chartColors, drawings, alertLevels, logScale, showVolumeProfile]);
 
   // Drag handler for text annotations
   useEffect(() => {

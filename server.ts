@@ -392,6 +392,117 @@ app.get('/api/fundamentals/:symbol', async (req, res) => {
   }
 });
 
+// ─── Financial statements (fundamentals-timeseries API) ───
+// Yahoo deprecated the detailed fields in the legacy quoteSummary statement
+// modules; the data now lives in the fundamentals-timeseries endpoint. We map
+// the new taxonomy back to the classic field names the client renders.
+const FIN_MAP: Record<'income' | 'balance' | 'cashflow', Record<string, string>> = {
+  income: {
+    annualTotalRevenue: 'totalRevenue',
+    annualCostOfRevenue: 'costOfRevenue',
+    annualGrossProfit: 'grossProfit',
+    annualResearchAndDevelopment: 'researchDevelopment',
+    annualSellingGeneralAndAdministration: 'sellingGeneralAdministrative',
+    annualOperatingExpense: 'totalOperatingExpenses',
+    annualOperatingIncome: 'operatingIncome',
+    annualPretaxIncome: 'incomeBeforeTax',
+    annualTaxProvision: 'incomeTaxExpense',
+    annualNetIncome: 'netIncome',
+  },
+  balance: {
+    annualCashAndCashEquivalents: 'cash',
+    annualCurrentAssets: 'totalCurrentAssets',
+    annualTotalAssets: 'totalAssets',
+    annualCurrentLiabilities: 'totalCurrentLiabilities',
+    annualLongTermDebt: 'longTermDebt',
+    annualTotalLiabilitiesNetMinorityInterest: 'totalLiab',
+    annualRetainedEarnings: 'retainedEarnings',
+    annualStockholdersEquity: 'totalStockholderEquity',
+  },
+  cashflow: {
+    annualNetIncome: 'netIncome',
+    annualDepreciationAndAmortization: 'depreciation',
+    annualOperatingCashFlow: 'totalCashFromOperatingActivities',
+    annualCapitalExpenditure: 'capitalExpenditures',
+    annualInvestingCashFlow: 'totalCashflowsFromInvestingActivities',
+    annualCashDividendsPaid: 'dividendsPaid',
+    annualRepurchaseOfCapitalStock: 'repurchaseOfStock',
+    annualFinancingCashFlow: 'totalCashFromFinancingActivities',
+  },
+};
+
+app.get('/api/financials/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const cacheKey = `financials:${symbol}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    // Which statement does each requested type belong to?
+    const typeToStatement: Record<string, 'income' | 'balance' | 'cashflow'> = {};
+    const allTypes: string[] = [];
+    (Object.keys(FIN_MAP) as Array<'income' | 'balance' | 'cashflow'>).forEach((stmt) => {
+      for (const t of Object.keys(FIN_MAP[stmt])) {
+        // a type can map to two statements (annualNetIncome); request once, fan out below
+        if (!allTypes.includes(t)) allTypes.push(t);
+        typeToStatement[t] = stmt; // last wins; fan-out handled in parse
+      }
+    });
+
+    const period2 = Math.floor(Date.now() / 1000);
+    const period1 = period2 - 6 * 366 * 86400; // ~6 years back
+    const url =
+      `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}` +
+      `?symbol=${encodeURIComponent(symbol)}&type=${allTypes.join(',')}&period1=${period1}&period2=${period2}&merge=false`;
+
+    const data = await yahooFetch(url);
+    const results: any[] = data?.timeseries?.result || [];
+
+    // statement → asOfDate → { endDate, [field]: value }
+    const periods: Record<'income' | 'balance' | 'cashflow', Map<string, any>> = {
+      income: new Map(), balance: new Map(), cashflow: new Map(),
+    };
+
+    for (const series of results) {
+      const type: string = series?.meta?.type?.[0];
+      if (!type) continue;
+      const points: any[] = series[type] || [];
+      // A type may belong to several statements (e.g. annualNetIncome → income + cashflow)
+      const targets = (Object.keys(FIN_MAP) as Array<'income' | 'balance' | 'cashflow'>).filter(
+        (stmt) => FIN_MAP[stmt][type]
+      );
+      for (const pt of points) {
+        if (!pt || pt.reportedValue?.raw == null || !pt.asOfDate) continue;
+        const value = pt.reportedValue.raw;
+        const endDate = Math.floor(Date.parse(pt.asOfDate) / 1000);
+        for (const stmt of targets) {
+          const field = FIN_MAP[stmt][type];
+          const map = periods[stmt];
+          if (!map.has(pt.asOfDate)) map.set(pt.asOfDate, { endDate });
+          map.get(pt.asOfDate)[field] = value;
+        }
+      }
+    }
+
+    const toArray = (m: Map<string, any>) =>
+      [...m.values()].sort((a, b) => (b.endDate || 0) - (a.endDate || 0));
+
+    const result = {
+      income: toArray(periods.income),
+      balance: toArray(periods.balance),
+      cashflow: toArray(periods.cashflow),
+    };
+
+    setCache(cacheKey, result, 900_000);
+    res.json(result);
+  } catch (error: any) {
+    console.error(`Financials error for ${req.params.symbol}:`, error.message);
+    const stale = getStale(`financials:${req.params.symbol}`);
+    if (stale) return res.json(stale);
+    res.status(500).json({ error: 'Failed to fetch financials' });
+  }
+});
+
 // ─── News (Google News RSS + Finnhub fallback) ───
 
 // Simple XML tag extractor (no dependency)
