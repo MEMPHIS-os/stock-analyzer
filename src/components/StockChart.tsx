@@ -900,6 +900,152 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
           svg.appendChild(hitRect);
         }
       }
+
+      // --- 3-point drawings: parallel channel, Andrews pitchfork, position tool ---
+      const NS = 'http://www.w3.org/2000/svg';
+      const addLine = (
+        ax: number, ay: number, bx: number, by: number,
+        color: string, width = 2, dash?: string, opacity = 1,
+      ) => {
+        const ln = document.createElementNS(NS, 'line');
+        ln.setAttribute('x1', String(ax));
+        ln.setAttribute('y1', String(ay));
+        ln.setAttribute('x2', String(bx));
+        ln.setAttribute('y2', String(by));
+        ln.setAttribute('stroke', color);
+        ln.setAttribute('stroke-width', String(width));
+        ln.setAttribute('stroke-linecap', 'round');
+        if (dash) ln.setAttribute('stroke-dasharray', dash);
+        if (opacity !== 1) ln.setAttribute('stroke-opacity', String(opacity));
+        svg.appendChild(ln);
+        return ln;
+      };
+      const addLabel = (tx: number, ty: number, txt: string, color: string) => {
+        const t = document.createElementNS(NS, 'text');
+        t.setAttribute('x', String(tx));
+        t.setAttribute('y', String(ty));
+        t.setAttribute('fill', color);
+        t.setAttribute('font-size', '10');
+        t.setAttribute('font-family', 'monospace');
+        t.setAttribute('font-weight', '600');
+        t.textContent = txt;
+        svg.appendChild(t);
+      };
+      const addRemoveHit = (id: string, ax: number, ay: number, bx: number, by: number) => {
+        const hit = document.createElementNS(NS, 'line');
+        hit.setAttribute('x1', String(ax));
+        hit.setAttribute('y1', String(ay));
+        hit.setAttribute('x2', String(bx));
+        hit.setAttribute('y2', String(by));
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '10');
+        hit.setAttribute('cursor', 'pointer');
+        hit.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(id);
+        });
+        svg.appendChild(hit);
+      };
+
+      const triDrawings = drawings.filter(
+        (d) => d.type === 'channel' || d.type === 'pitchfork' || d.type === 'position'
+      );
+      for (const drawing of triDrawings) {
+        if (drawing.points.length < 3) continue;
+        const [pa, pb, pc] = drawing.points;
+        const ax = chart.timeScale().timeToCoordinate(pa.time as any);
+        const bx = chart.timeScale().timeToCoordinate(pb.time as any);
+        const cx = chart.timeScale().timeToCoordinate(pc.time as any);
+        const ay = priceSeries.priceToCoordinate(pa.price);
+        const by = priceSeries.priceToCoordinate(pb.price);
+        const cy = priceSeries.priceToCoordinate(pc.price);
+        if (ax == null || bx == null || cx == null || ay == null || by == null || cy == null) continue;
+
+        if (drawing.type === 'channel') {
+          if (bx === ax) continue; // avoid vertical baseline
+          const m = (by - ay) / (bx - ax);
+          const baseAt = (x: number) => ay + m * (x - ax);
+          const offset = cy - baseAt(cx);
+          const xStart = Math.min(ax, bx, cx);
+          const xEnd = w;
+          const b0 = baseAt(xStart), b1 = baseAt(xEnd);
+          const p0 = b0 + offset, p1y = b1 + offset;
+          // Fill between the two parallels
+          const poly = document.createElementNS(NS, 'polygon');
+          poly.setAttribute(
+            'points',
+            `${xStart},${b0} ${xEnd},${b1} ${xEnd},${p1y} ${xStart},${p0}`
+          );
+          poly.setAttribute('fill', drawing.color);
+          poly.setAttribute('fill-opacity', '0.08');
+          svg.appendChild(poly);
+          addLine(xStart, b0, xEnd, b1, drawing.color, 2);
+          addLine(xStart, p0, xEnd, p1y, drawing.color, 2, '5 3');
+          addRemoveHit(drawing.id, ax, ay, bx, by);
+        }
+
+        if (drawing.type === 'pitchfork') {
+          const mx = (bx + cx) / 2;
+          const my = (by + cy) / 2;
+          const dx = mx - ax;
+          const dy = my - ay;
+          // Extend a ray from (sx,sy) along (dx,dy) to the right chart edge.
+          const ext = (sx: number, sy: number): [number, number] => {
+            if (dx === 0) return [sx, sy < my ? 0 : h2];
+            const s = (w - sx) / dx;
+            return [w, sy + s * dy];
+          };
+          const [medEx, medEy] = ext(ax, ay);
+          const [upEx, upEy] = ext(bx, by);
+          const [loEx, loEy] = ext(cx, cy);
+          // Base connecting the two prongs
+          addLine(bx, by, cx, cy, drawing.color, 1.5, '4 2', 0.8);
+          // Median + parallel prongs
+          addLine(ax, ay, medEx, medEy, drawing.color, 2);
+          addLine(bx, by, upEx, upEy, drawing.color, 1.5, undefined, 0.85);
+          addLine(cx, cy, loEx, loEy, drawing.color, 1.5, undefined, 0.85);
+          addRemoveHit(drawing.id, ax, ay, medEx, medEy);
+        }
+
+        if (drawing.type === 'position') {
+          // pa = entry, pb = target, pc = stop
+          const left = Math.min(ax, bx);
+          const right = Math.max(ax, bx);
+          const profitColor = '#26a69a';
+          const lossColor = '#ef5350';
+          const drawBox = (yFrom: number, yTo: number, color: string) => {
+            const rect = document.createElementNS(NS, 'rect');
+            rect.setAttribute('x', String(left));
+            rect.setAttribute('y', String(Math.min(yFrom, yTo)));
+            rect.setAttribute('width', String(Math.max(1, right - left)));
+            rect.setAttribute('height', String(Math.abs(yTo - yFrom)));
+            rect.setAttribute('fill', color);
+            rect.setAttribute('fill-opacity', '0.14');
+            rect.setAttribute('stroke', color);
+            rect.setAttribute('stroke-width', '1');
+            rect.setAttribute('cursor', 'pointer');
+            rect.addEventListener('dblclick', (e) => {
+              e.stopPropagation();
+              if (onRemoveDrawingRef.current) onRemoveDrawingRef.current(drawing.id);
+            });
+            svg.appendChild(rect);
+          };
+          drawBox(ay, by, profitColor); // entry → target
+          drawBox(ay, cy, lossColor);   // entry → stop
+          // Entry line
+          addLine(left, ay, right, ay, '#cfd3dc', 1.5, '6 3');
+          // Risk/reward + percentages
+          const entryP = pa.price, targetP = pb.price, stopP = pc.price;
+          const reward = Math.abs(targetP - entryP);
+          const risk = Math.abs(entryP - stopP);
+          const rr = risk > 0 ? reward / risk : 0;
+          const tgtPct = entryP !== 0 ? ((targetP - entryP) / entryP) * 100 : 0;
+          const stopPct = entryP !== 0 ? ((stopP - entryP) / entryP) * 100 : 0;
+          addLabel(left + 4, Math.min(ay, by) + 12, `Ziel ${tgtPct >= 0 ? '+' : ''}${tgtPct.toFixed(1)}%`, profitColor);
+          addLabel(left + 4, Math.max(ay, cy) - 4, `Stop ${stopPct >= 0 ? '+' : ''}${stopPct.toFixed(1)}%`, lossColor);
+          addLabel(right + 4, ay + 3, `R/R ${rr.toFixed(2)}`, '#cfd3dc');
+        }
+      }
     }
 
     updateSvgOverlay();

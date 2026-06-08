@@ -20,6 +20,8 @@ import {
   PiggyBank,
   Flame,
   CalendarRange,
+  Newspaper,
+  CalendarClock,
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import { useApp } from '../context';
@@ -52,6 +54,8 @@ export default function Header() {
   ];
 
   const moreNav = [
+    { path: '/news', label: t('nav.news'), icon: Newspaper },
+    { path: '/upcoming', label: t('nav.upcoming'), icon: CalendarClock },
     { path: '/hotlists', label: t('nav.hotlists'), icon: Flame },
     { path: '/calendar', label: t('nav.calendar'), icon: CalendarRange },
     { path: '/heatmap', label: t('nav.heatmap'), icon: Grid3x3 },

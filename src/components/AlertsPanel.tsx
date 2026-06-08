@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign, Pause, Play, Repeat, Activity } from 'lucide-react';
+import { Bell, X, Plus, Trash2, ArrowUp, ArrowDown, Check, Percent, BarChart3, DollarSign, Pause, Play, Repeat, Activity, TrendingUp } from 'lucide-react';
 import type { PriceAlert, AddAlertInput, AlertKind } from '../hooks/useAlerts';
 import { useApp } from '../context';
 import { usePrice } from '../hooks/usePrice';
@@ -26,7 +26,12 @@ const KIND_META: Record<AlertKind, { de: string; en: string; icon: typeof Dollar
   percentChange: { de: '% Tag', en: '% Day', icon: Percent },
   volumeSpike: { de: 'Volumen', en: 'Volume', icon: BarChart3 },
   rsi: { de: 'RSI', en: 'RSI', icon: Activity },
+  trendlineCross: { de: 'Trendlinie', en: 'Trend line', icon: TrendingUp },
 };
+
+/** Kinds that can be created from this panel. trendlineCross is created by
+ *  drawing a line on the chart, so it is excluded from the creation grid. */
+const CREATABLE_KINDS: AlertKind[] = ['price', 'percentChange', 'volumeSpike', 'rsi'];
 
 export default function AlertsPanel({
   activeAlerts,
@@ -80,10 +85,15 @@ export default function AlertsPanel({
       const dir = alert.condition === 'above' ? '≥' : '≤';
       return `RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`;
     }
+    if (alert.kind === 'trendlineCross') {
+      const arrow = alert.condition === 'above' ? '↑' : '↓';
+      return `${de ? 'kreuzt Trendlinie' : 'crosses trend line'} ${arrow}`;
+    }
     return `${alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below')} ${fp(alert.targetPrice ?? 0)}`;
   }
 
   function alertIcon(alert: PriceAlert) {
+    if (alert.kind === 'trendlineCross') return <TrendingUp className="w-3.5 h-3.5 text-accent" />;
     if (alert.kind === 'rsi') return <Activity className="w-3.5 h-3.5 text-accent" />;
     if (alert.kind === 'volumeSpike') return <BarChart3 className="w-3.5 h-3.5 text-accent" />;
     if (alert.kind === 'percentChange') {
@@ -161,7 +171,7 @@ export default function AlertsPanel({
               {de ? 'Alarmtyp' : 'Alert type'}
             </label>
             <div className="grid grid-cols-4 gap-1.5">
-              {(Object.keys(KIND_META) as AlertKind[]).map((k) => {
+              {CREATABLE_KINDS.map((k) => {
                 const meta = KIND_META[k];
                 const Icon = meta.icon;
                 const active = kind === k;
