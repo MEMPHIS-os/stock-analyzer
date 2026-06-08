@@ -66,6 +66,31 @@ export async function fetchNews(symbol: string): Promise<NewsItem[]> {
   return data;
 }
 
+export interface CalendarEvent {
+  symbol: string;
+  name: string;
+  /** Next earnings report date (unix seconds), if known. */
+  earningsDate: number | null;
+  /** Consensus EPS estimate for the upcoming report. */
+  earningsEstimate: number | null;
+  /** Ex-dividend date (unix seconds). */
+  exDividendDate: number | null;
+  /** Dividend payment date (unix seconds). */
+  dividendDate: number | null;
+  /** Annual dividend per share. */
+  dividendRate: number | null;
+  /** Forward dividend yield (fraction, e.g. 0.015). */
+  dividendYield: number | null;
+}
+
+export async function fetchCalendarEvents(symbols: string[]): Promise<CalendarEvent[]> {
+  if (!symbols.length) return [];
+  const { data } = await api.get('/calendar-events', {
+    params: { symbols: symbols.join(',') },
+  });
+  return data;
+}
+
 export async function fetchSparklines(symbols: string[]): Promise<Record<string, number[]>> {
   if (!symbols.length) return {};
   const { data } = await api.get('/sparklines', {

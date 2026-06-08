@@ -51,7 +51,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { SkeletonStockOverview, SkeletonChart, SkeletonBlock } from '../components/Skeleton';
 import DrawingToolbar from '../components/DrawingToolbar';
 import { YoYToggleButton, useYoYOverlay } from '../components/YoYOverlay';
-import { useDrawings } from '../hooks/useDrawings';
+import { useDrawings, type Drawing } from '../hooks/useDrawings';
+import { lineValueAt } from '../hooks/useAlerts';
 import { useChartTemplates } from '../hooks/useChartTemplates';
 import { downloadScreenshotFromCanvas, exportOHLCVtoCSV } from '../exportUtils';
 import { buildEarningsMarkers } from '../utils/earningsMarkers';
@@ -247,7 +248,7 @@ const TAB_CONFIG_CRYPTO: { key: TabType; i18nKey: string; icon: typeof Building2
 
 export default function StockDetail() {
   const { symbol = 'AAPL' } = useParams<{ symbol: string }>();
-  const { locale, activeAlerts, t } = useApp();
+  const { locale, activeAlerts, addAlert, t } = useApp();
   const isIndex = symbol.startsWith('^');
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const isFund = !isIndex && (quote?.quoteType === 'ETF' || quote?.quoteType === 'MUTUALFUND');
@@ -266,6 +267,8 @@ export default function StockDetail() {
   const [yoyEnabled, setYoyEnabled] = useState(false);
   const [logScale, setLogScale] = useState(false);
   const [showVolProfile, setShowVolProfile] = useState(false);
+  // When armed, the next trend line / ray drawn also creates a cross alert.
+  const [alertArmed, setAlertArmed] = useState(false);
   // ─── Bar replay ───
   const [replayMode, setReplayMode] = useState(false);
   const [replayIndex, setReplayIndex] = useState(0);
@@ -285,11 +288,33 @@ export default function StockDetail() {
   const chartRef = useRef<StockChartRef>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
+  // When a trend line / ray is drawn while the alert is armed, register a
+  // trend-line-cross alert anchored to that line's two points.
+  const handleDrawingAdded = (drawing: Drawing) => {
+    if (!alertArmed) return;
+    if (drawing.type !== 'trendline' && drawing.type !== 'ray') return;
+    if (drawing.points.length < 2 || !quote) return;
+    const toUnix = (time: string) => {
+      const n = Number(time);
+      if (!Number.isNaN(n) && n > 1e8) return n; // already unix seconds (intraday)
+      const ms = Date.parse(time);
+      return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000);
+    };
+    const linePoints = drawing.points.slice(0, 2).map((p) => ({ t: toUnix(p.time), price: p.price }));
+    const target = lineValueAt(linePoints, Date.now() / 1000);
+    if (target == null) return;
+    const price = quote.regularMarketPrice;
+    // Fire when price crosses toward the line from its current side.
+    const condition: 'above' | 'below' = price < target ? 'above' : 'below';
+    addAlert({ kind: 'trendlineCross', symbol: symbol.toUpperCase(), linePoints, condition, lineLabel: drawing.color });
+    setAlertArmed(false);
+  };
+
   const {
     drawings, activeTool, setActiveTool, pendingPoints, pendingTextPoint,
     handleChartClick, confirmTextDrawing, cancelTextDrawing,
     cancelDrawing, removeDrawing, updateDrawing, clearAll,
-  } = useDrawings(symbol);
+  } = useDrawings(symbol, handleDrawingAdded);
 
   // Filter alerts for the current symbol
   const symbolAlerts = useMemo(() =>
@@ -1077,6 +1102,8 @@ export default function StockDetail() {
             onClearAll={clearAll}
             drawingCount={drawings.length}
             pendingPointsCount={pendingPoints.length}
+            alertArmed={alertArmed}
+            onToggleAlertArm={() => setAlertArmed((v) => !v)}
           />
         )}
         <div className="card overflow-hidden flex-1">

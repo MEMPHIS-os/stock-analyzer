@@ -1,13 +1,49 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
-export type DrawingTool = 'none' | 'hline' | 'trendline' | 'ray' | 'rectangle' | 'fibonacci' | 'text' | 'ruler';
+export type DrawingTool =
+  | 'none'
+  | 'hline'
+  | 'trendline'
+  | 'ray'
+  | 'rectangle'
+  | 'fibonacci'
+  | 'channel'
+  | 'pitchfork'
+  | 'position'
+  | 'text'
+  | 'ruler';
 
 export interface Drawing {
   id: string;
-  type: 'hline' | 'trendline' | 'ray' | 'rectangle' | 'fibonacci' | 'text' | 'ruler';
+  type:
+    | 'hline'
+    | 'trendline'
+    | 'ray'
+    | 'rectangle'
+    | 'fibonacci'
+    | 'channel'
+    | 'pitchfork'
+    | 'position'
+    | 'text'
+    | 'ruler';
   points: { time: string; price: number }[];
   color: string;
   text?: string;
+}
+
+/** How many clicks each tool needs before the drawing is committed. */
+export function pointsNeeded(tool: DrawingTool): number {
+  switch (tool) {
+    case 'hline':
+    case 'text':
+      return 1;
+    case 'channel':
+    case 'pitchfork':
+    case 'position':
+      return 3;
+    default:
+      return 2;
+  }
 }
 
 const DRAWING_COLORS = ['#2962ff', '#ff9800', '#e91e63', '#26a69a', '#7e57c2', '#ff5722'];
@@ -19,7 +55,7 @@ function nextColor() {
   return color;
 }
 
-export function useDrawings(symbol: string) {
+export function useDrawings(symbol: string, onAdd?: (drawing: Drawing) => void) {
   const storageKey = `stockanalyzer_drawings_${symbol}`;
 
   const loadDrawings = (): Drawing[] => {
@@ -31,6 +67,8 @@ export function useDrawings(symbol: string) {
   };
 
   const [drawings, setDrawings] = useState<Drawing[]>(loadDrawings);
+  const onAddRef = useRef(onAdd);
+  onAddRef.current = onAdd;
   const [activeTool, setActiveTool] = useState<DrawingTool>('none');
   const [pendingPoints, setPendingPoints] = useState<{ time: string; price: number }[]>([]);
   // For text tool: store the click position so the overlay can show an inline input
@@ -54,6 +92,7 @@ export function useDrawings(symbol: string) {
         save(updated);
         return updated;
       });
+      onAddRef.current?.(newDrawing);
       return newDrawing;
     },
     [save]
@@ -139,6 +178,23 @@ export function useDrawings(symbol: string) {
             type: activeTool,
             points: newPoints,
             color: nextColor(),
+          });
+          setPendingPoints([]);
+          setActiveTool('none');
+        } else {
+          setPendingPoints(newPoints);
+        }
+        return;
+      }
+
+      if (activeTool === 'channel' || activeTool === 'pitchfork' || activeTool === 'position') {
+        const newPoints = [...pendingPoints, { time, price }];
+        if (newPoints.length >= 3) {
+          addDrawing({
+            type: activeTool,
+            points: newPoints,
+            // Position tool draws its own profit/loss colors; others get a palette color.
+            color: activeTool === 'position' ? '#26a69a' : nextColor(),
           });
           setPendingPoints([]);
           setActiveTool('none');

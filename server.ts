@@ -580,6 +580,76 @@ async function fetchFinnhubNews(symbol: string): Promise<any[]> {
   }
 }
 
+// ─── Upcoming calendar events (earnings + ex-dividend dates) ───
+// Batched across the watchlist via quoteSummary calendarEvents + summaryDetail.
+app.get('/api/calendar-events', async (req, res) => {
+  try {
+    const symbolsParam = String(req.query.symbols || '');
+    const symbols = symbolsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 60);
+    if (symbols.length === 0) return res.json([]);
+
+    const cacheKey = `calevents:${symbols.slice().sort().join(',')}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    // Normalise Yahoo's {raw} / numeric / ISO date variants to unix seconds.
+    const toUnix = (v: any): number | null => {
+      if (v == null) return null;
+      if (typeof v === 'number') return v > 1e11 ? Math.floor(v / 1000) : v;
+      if (typeof v === 'object' && v.raw != null) return toUnix(v.raw);
+      const parsed = Date.parse(String(v));
+      return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000);
+    };
+
+    const results = await Promise.all(
+      symbols.map(async (symbol) => {
+        try {
+          const data = await yahooFetch(
+            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=calendarEvents,summaryDetail,price`
+          );
+          const raw = data?.quoteSummary?.result?.[0];
+          if (!raw) return null;
+          const cal = raw.calendarEvents || {};
+          const sd = raw.summaryDetail || {};
+          const price = raw.price || {};
+
+          // earnings.earningsDate is an array of {raw} timestamps; pick the first
+          // one that is in the future (fall back to the first entry).
+          const nowSec = Math.floor(Date.now() / 1000);
+          const earningsDates: number[] = (cal.earnings?.earningsDate || [])
+            .map(toUnix)
+            .filter((n: number | null): n is number => n != null);
+          const futureEarnings = earningsDates.find((d) => d >= nowSec - 86400);
+          const earningsDate = futureEarnings ?? earningsDates[0] ?? null;
+
+          const exDiv = toUnix(cal.exDividendDate) ?? toUnix(sd.exDividendDate);
+          const divDate = toUnix(cal.dividendDate) ?? toUnix(sd.dividendDate);
+
+          return {
+            symbol,
+            name: price.shortName || price.longName || symbol,
+            earningsDate,
+            earningsEstimate: cal.earnings?.earningsAverage?.raw ?? cal.earnings?.earningsAverage ?? null,
+            exDividendDate: exDiv ?? null,
+            dividendDate: divDate ?? null,
+            dividendRate: sd.dividendRate?.raw ?? sd.dividendRate ?? null,
+            dividendYield: sd.dividendYield?.raw ?? sd.dividendYield ?? null,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const events = results.filter(Boolean);
+    setCache(cacheKey, events, 1800_000); // 30 min
+    res.json(events);
+  } catch (error: any) {
+    console.error('Calendar events error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch calendar events' });
+  }
+});
+
 app.get('/api/news/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;

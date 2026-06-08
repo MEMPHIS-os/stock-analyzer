@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { formatPrice } from '../formatters';
 
-export type AlertKind = 'price' | 'percentChange' | 'volumeSpike' | 'rsi';
+export type AlertKind = 'price' | 'percentChange' | 'volumeSpike' | 'rsi' | 'trendlineCross';
+
+/** A point on a drawn trend line: unix seconds + price. */
+export interface LinePoint {
+  t: number;
+  price: number;
+}
 
 export interface PriceAlert {
   id: string;
@@ -17,7 +23,12 @@ export interface PriceAlert {
   targetLevel?: number;
   /** For kind='rsi': RSI look-back period (default 14). */
   period?: number;
-  /** For 'price', 'percentChange' & 'rsi': direction. 'volumeSpike' ignores this. */
+  /** For kind='trendlineCross': the two anchor points of the drawn line. */
+  linePoints?: LinePoint[];
+  /** For kind='trendlineCross': a short human label for the line (e.g. its color). */
+  lineLabel?: string;
+  /** For 'price', 'percentChange', 'rsi' & 'trendlineCross': direction.
+   *  'volumeSpike' ignores this. */
   condition: 'above' | 'below';
   createdAt: number;
   triggered: boolean;
@@ -33,7 +44,8 @@ export type AddAlertInput =
   | { kind: 'price'; symbol: string; targetPrice: number; condition: 'above' | 'below'; recurring?: boolean }
   | { kind: 'percentChange'; symbol: string; targetPercent: number; condition: 'above' | 'below'; recurring?: boolean }
   | { kind: 'volumeSpike'; symbol: string; targetMultiplier: number; recurring?: boolean }
-  | { kind: 'rsi'; symbol: string; targetLevel: number; period?: number; condition: 'above' | 'below'; recurring?: boolean };
+  | { kind: 'rsi'; symbol: string; targetLevel: number; period?: number; condition: 'above' | 'below'; recurring?: boolean }
+  | { kind: 'trendlineCross'; symbol: string; linePoints: LinePoint[]; condition: 'above' | 'below'; lineLabel?: string; recurring?: boolean };
 
 interface QuoteForAlert {
   regularMarketPrice: number;
@@ -76,6 +88,15 @@ function saveAlerts(alerts: PriceAlert[]) {
   localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts));
 }
 
+/** Extrapolate the price level of a drawn trend line at a given unix time. */
+export function lineValueAt(points: LinePoint[] | undefined, tNow: number): number | null {
+  if (!points || points.length < 2) return null;
+  const [a, b] = points;
+  if (b.t === a.t) return b.price;
+  const slope = (b.price - a.price) / (b.t - a.t);
+  return a.price + slope * (tNow - a.t);
+}
+
 function describeAlert(alert: PriceAlert, locale: 'de' | 'en', currency = 'USD'): string {
   const de = locale === 'de';
   if (alert.kind === 'percentChange') {
@@ -94,6 +115,12 @@ function describeAlert(alert: PriceAlert, locale: 'de' | 'en', currency = 'USD')
     return de
       ? `${alert.symbol} RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`
       : `${alert.symbol} RSI(${alert.period ?? 14}) ${dir} ${alert.targetLevel}`;
+  }
+  if (alert.kind === 'trendlineCross') {
+    const arrow = alert.condition === 'above' ? '↑' : '↓';
+    return de
+      ? `${alert.symbol} kreuzt Trendlinie ${arrow}`
+      : `${alert.symbol} crosses trend line ${arrow}`;
   }
   const word = alert.condition === 'above' ? (de ? 'über' : 'above') : (de ? 'unter' : 'below');
   return `${alert.symbol} ${word} ${formatPrice(alert.targetPrice ?? 0, currency, locale)}`;
@@ -142,12 +169,20 @@ export function useAlerts() {
         targetMultiplier: input.targetMultiplier,
         condition: 'above',
       };
-    } else {
+    } else if (input.kind === 'rsi') {
       alert = {
         ...base,
         kind: 'rsi',
         targetLevel: input.targetLevel,
         period: input.period ?? 14,
+        condition: input.condition,
+      };
+    } else {
+      alert = {
+        ...base,
+        kind: 'trendlineCross',
+        linePoints: input.linePoints,
+        lineLabel: input.lineLabel,
         condition: input.condition,
       };
     }
@@ -210,6 +245,14 @@ export function useAlerts() {
               isTriggered =
                 (alert.condition === 'above' && rsi >= alert.targetLevel) ||
                 (alert.condition === 'below' && rsi <= alert.targetLevel);
+            }
+          } else if (alert.kind === 'trendlineCross' && alert.linePoints) {
+            const target = lineValueAt(alert.linePoints, Date.now() / 1000);
+            if (target != null) {
+              const price = quote.regularMarketPrice;
+              isTriggered =
+                (alert.condition === 'above' && price >= target) ||
+                (alert.condition === 'below' && price <= target);
             }
           }
 

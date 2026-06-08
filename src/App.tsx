@@ -30,6 +30,8 @@ const Backtesting = lazy(() => import('./pages/Backtesting'));
 const Funds = lazy(() => import('./pages/Funds'));
 const Hotlists = lazy(() => import('./pages/Hotlists'));
 const MacroCalendar = lazy(() => import('./pages/MacroCalendar'));
+const News = lazy(() => import('./pages/News'));
+const UpcomingEvents = lazy(() => import('./pages/UpcomingEvents'));
 
 const TICKER_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'JPM', 'V'];
 
@@ -158,6 +160,8 @@ function AppShell() {
                   <Route path="/funds" element={<Funds />} />
                   <Route path="/hotlists" element={<Hotlists />} />
                   <Route path="/calendar" element={<MacroCalendar />} />
+                  <Route path="/news" element={<News />} />
+                  <Route path="/upcoming" element={<UpcomingEvents />} />
                 </Routes>
               </div>
             </Suspense>
