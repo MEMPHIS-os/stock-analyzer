@@ -1064,7 +1064,10 @@ app.get('/api/exchangerate', async (req, res) => {
   return app;
 }
 
-export function startServer(staticDir?: string, port: number = 3001): Promise<number> {
+export function startServer(
+  staticDir?: string,
+  port: number = 3001,
+): Promise<{ port: number; server: import('http').Server }> {
   const app = createApp();
 
   // Pre-warm Yahoo auth in background (faster first request)
@@ -1096,7 +1099,7 @@ export function startServer(staticDir?: string, port: number = 3001): Promise<nu
         const addr = server.address();
         const actualPort = typeof addr === 'object' && addr ? addr.port : p;
         console.log(`\n  StockAnalyzer running at http://localhost:${actualPort}\n`);
-        resolve(actualPort);
+        resolve({ port: actualPort, server });
       });
       server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE' && p !== 0) {

@@ -4,6 +4,28 @@ import path from 'path';
 import { startServer } from '../server';
 
 let mainWindow: BrowserWindow | null = null;
+let httpServer: import('http').Server | null = null;
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+let isQuittingForUpdate = false;
+let cleanedUp = false;
+
+/**
+ * Release process resources before the app quits (normal quit OR an
+ * update-install quit). Closing the HTTP server promptly frees the fixed port
+ * 38473, so the relaunched (updated) app re-binds the SAME port → same
+ * localStorage origin → the portfolio/watchlist survive the update. Also stops
+ * the periodic update check so it can't fire mid-uninstall. Idempotent.
+ */
+function cleanupBeforeQuit() {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  try {
+    if (updateCheckInterval) clearInterval(updateCheckInterval);
+  } catch {}
+  try {
+    httpServer?.close();
+  } catch {}
+}
 
 async function createWindow() {
   // In packaged mode (asar:false): resources/app/dist-electron/main.cjs → resources/app/dist/
@@ -47,7 +69,8 @@ async function createWindow() {
   // so a fixed port is what keeps the portfolio, watchlist, drawings and alerts
   // persisted across restarts. startServer walks up from here if the port is
   // taken (and only falls back to a random port as a last resort).
-  const port = await startServer(distPath, 38473);
+  const { port, server } = await startServer(distPath, 38473);
+  httpServer = server;
   splashStatus('Marktdaten werden geladen…');
 
   mainWindow = new BrowserWindow({
@@ -260,13 +283,27 @@ function setupAutoUpdater() {
   // ─── IPC handlers ───
 
   ipcMain.on('install-update', () => {
-    writeLog('info', 'User requested install — calling quitAndInstall...');
-    try {
-      autoUpdater.quitAndInstall(false, true);
-    } catch (err: any) {
-      writeLog('error', `quitAndInstall failed: ${err.message}`);
-      mainWindow?.webContents.send('update-error', { message: `Install failed: ${err.message}` });
-    }
+    if (isQuittingForUpdate) return; // ignore double-clicks
+    isQuittingForUpdate = true;
+    writeLog('info', 'User requested install — closing resources & quitAndInstall...');
+    // Free port 38473 and stop the periodic check before the installer spawns,
+    // so the relaunched app re-binds the same port (same localStorage origin).
+    cleanupBeforeQuit();
+    // Defer quitAndInstall out of the IPC dispatch frame: calling it
+    // synchronously here can race with window teardown / the IPC round-trip and
+    // make the app exit before the NSIS installer fully detaches (the
+    // "app just closes, installer never runs" / crash class of bugs).
+    setImmediate(() => {
+      try {
+        // oneClick NSIS (per-user, no UAC): silent install + force relaunch.
+        // NB: isForceRunAfter is ignored unless isSilent is true.
+        autoUpdater.quitAndInstall(true, true);
+      } catch (err: any) {
+        isQuittingForUpdate = false;
+        writeLog('error', `quitAndInstall failed: ${err.message}`);
+        mainWindow?.webContents.send('update-error', { message: `Install failed: ${err.message}` });
+      }
+    });
   });
 
   ipcMain.on('check-for-updates', () => {
@@ -284,7 +321,7 @@ function setupAutoUpdater() {
   }, 5000);
 
   // Re-check every 4 hours
-  setInterval(() => {
+  updateCheckInterval = setInterval(() => {
     autoUpdater.checkForUpdates().catch(() => {});
   }, 4 * 60 * 60 * 1000);
 }
@@ -298,7 +335,14 @@ app.whenReady()
     app.quit();
   });
 
+// Run cleanup once on any quit path (normal quit or electron-updater's
+// install-on-quit), so the HTTP server/port is released before the process
+// exits. quitAndInstall closes windows first, so this also covers the update
+// flow even though before-quit ordering differs there.
+app.on('before-quit', cleanupBeforeQuit);
+
 app.on('window-all-closed', () => {
+  cleanupBeforeQuit();
   app.quit();
 });
 

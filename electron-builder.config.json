@@ -28,6 +28,7 @@
     "perMachine": false,
     "allowToChangeInstallationDirectory": false,
     "deleteAppDataOnUninstall": false,
+    "disableWebInstaller": true,
     "shortcutName": "StockAnalyzer"
   },
   "publish": {
