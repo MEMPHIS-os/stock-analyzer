@@ -70,7 +70,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       onClick={onClose}
     >
       <div
-        className="rounded-2xl shadow-depth-lg w-full max-w-md animate-scale-in mx-4 overflow-hidden"
+        className="rounded-2xl shadow-depth-lg w-full max-w-md animate-scale-in mx-4 overflow-hidden flex flex-col max-h-[90vh]"
         style={{
           background: 'var(--glass-bg)',
           backdropFilter: 'blur(24px) saturate(180%)',
@@ -80,7 +80,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: 'var(--glass-border)' }}>
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-accent/10">
               <Settings className="w-5 h-5 text-accent" />
@@ -94,7 +94,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           </button>
         </div>
 
-        <div className="p-5 space-y-6">
+        <div className="p-5 space-y-6 overflow-y-auto flex-1 min-h-0">
           {/* Theme */}
           <div>
             <label className="text-[11px] text-txt-muted font-semibold uppercase tracking-wider mb-2.5 block">
