@@ -289,7 +289,14 @@ function setupAutoUpdater() {
   }, 4 * 60 * 60 * 1000);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady()
+  .then(createWindow)
+  .catch((err) => {
+    // startServer can reject if no port could be bound (rare). Don't leave the
+    // app hanging on an unhandled rejection — log and exit cleanly.
+    console.error('Fatal: StockAnalyzer failed to start:', err);
+    app.quit();
+  });
 
 app.on('window-all-closed', () => {
   app.quit();

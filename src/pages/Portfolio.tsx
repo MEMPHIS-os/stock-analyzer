@@ -347,6 +347,17 @@ export default function Portfolio() {
     [holdings],
   );
 
+  // The value chart only needs each symbol's CURRENCY from `quotes` (static per
+  // symbol), not the live price. Depend on a currency signature so the 30s
+  // quote refresh doesn't needlessly recompute the historical series; read the
+  // actual currency through a ref to avoid a stale closure.
+  const quotesRef = useRef(quotes);
+  quotesRef.current = quotes;
+  const ccySig = useMemo(
+    () => symbols.map((s) => quotes[s]?.currency || 'USD').join('|'),
+    [symbols, quotes],
+  );
+
   useEffect(() => {
     if (symbols.length === 0) {
       setQuotes({});
@@ -517,7 +528,7 @@ export default function Portfolio() {
         const shares = sharesMap.get(p.symbol);
         const close = lastClose[j];
         if (close != null && shares != null) {
-          const cur = quotes[p.symbol]?.currency || 'USD';
+          const cur = quotesRef.current[p.symbol]?.currency || 'USD';
           v += convertPrice(shares * close, cur).value;
           any = true;
         }
@@ -545,7 +556,8 @@ export default function Portfolio() {
       }
     }
     return { portfolio, benchmark, dates };
-  }, [rangeSeries, holdings, quotes, convertPrice]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeSeries, holdings, ccySig, convertPrice]);
 
   const valueSeries = chartData.portfolio;
   const benchmarkSeries = chartData.benchmark;
@@ -1376,7 +1388,11 @@ export default function Portfolio() {
                 <div className="h-2 rounded-full bg-dark-700/60 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-300"
-                    style={{ width: `${Math.max(1.5, row.pct * 100)}%`, background: row.color }}
+                    style={{
+                      width: `${row.pct * 100}%`,
+                      minWidth: row.pct > 0 ? '2px' : 0,
+                      background: row.color,
+                    }}
                   />
                 </div>
               </div>

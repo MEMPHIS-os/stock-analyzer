@@ -1109,7 +1109,9 @@ export function startServer(staticDir?: string, port: number = 3001): Promise<nu
             tryListen(0);
           }
         } else {
-          reject(err);
+          // Non-EADDRINUSE error (or port 0 itself failed): unrecoverable.
+          console.error(`  Server failed to bind (port ${p}): ${err.message}`);
+          reject(new Error(`StockAnalyzer server failed to start: ${err.message}`));
         }
       });
     };
