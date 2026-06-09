@@ -14,17 +14,18 @@ import {
   ShieldAlert,
   Coins,
   CalendarClock,
+  Layers,
 } from 'lucide-react';
 
 import { usePortfolio } from '../hooks/usePortfolio';
 import { buildTransactionsCSV, parseTransactionsCSV } from '../utils/portfolioCsv';
 import { useApp } from '../context';
-import { fetchQuotes, fetchChart, searchSymbols } from '../api';
-import { formatPercent, formatLargeNumber } from '../formatters';
+import { fetchQuotes, fetchChart, searchSymbols, fetchFundamentals } from '../api';
+import { formatPercent, formatLargeNumber, formatPrice } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import { Price } from '../components/Price';
 
-import type { SearchResult } from '../types';
+import type { SearchResult, TimeRange, ChartInterval } from '../types';
 
 // Mapped quote for easy consumption
 interface PortfolioQuote {
@@ -32,6 +33,7 @@ interface PortfolioQuote {
   change: number | null;
   changePercent: number | null;
   currency: string;
+  quoteType?: string;      // EQUITY | ETF | CRYPTOCURRENCY | ...
   dividendRate?: number;   // annual dividend per share, native currency
   dividendDate?: number;   // next payment, epoch seconds
 }
@@ -58,6 +60,36 @@ const INITIAL_RISK_METRICS: RiskMetrics = {
   annualVolatility: 0,
   loading: true,
 };
+
+// ---------------------------------------------------------------------------
+// Value-over-time range selector (1D / 1W / 1M / 1Y / 5Y / All time)
+// ---------------------------------------------------------------------------
+
+type ValueRangeKey = '1d' | '1w' | '1mo' | '1y' | '5y' | 'max';
+
+const VALUE_RANGES: {
+  key: ValueRangeKey;
+  de: string;
+  en: string;
+  range: TimeRange;
+  interval: ChartInterval;
+}[] = [
+  { key: '1d',  de: '1T',  en: '1D',  range: '1d',  interval: '5m'  },
+  { key: '1w',  de: '1W',  en: '1W',  range: '5d',  interval: '15m' },
+  { key: '1mo', de: '1M',  en: '1M',  range: '1mo', interval: '1d'  },
+  { key: '1y',  de: '1J',  en: '1Y',  range: '1y',  interval: '1d'  },
+  { key: '5y',  de: '5J',  en: '5Y',  range: '5y',  interval: '1wk' },
+  { key: 'max', de: 'Max', en: 'Max', range: 'max', interval: '1mo' },
+];
+
+// Benchmark presets for the value-over-time comparison line.
+const BENCHMARKS: { key: string; label: string; symbol: string | null }[] = [
+  { key: 'sp500',  label: 'S&P 500',     symbol: '^GSPC'  },
+  { key: 'nasdaq', label: 'Nasdaq 100',  symbol: '^NDX'   },
+  { key: 'world',  label: 'MSCI World',  symbol: 'URTH'   },
+  { key: 'dax',    label: 'DAX',         symbol: '^GDAXI' },
+  { key: 'none',   label: '—',           symbol: null     },
+];
 
 // ---------------------------------------------------------------------------
 // Colour palette for the donut chart
@@ -113,41 +145,158 @@ function buildDonutPath(
 // Value-over-time area chart (current holdings valued across the past year)
 // ---------------------------------------------------------------------------
 
-function ValueChart({ series, positive }: { series: number[]; positive: boolean }) {
+function ValueChart({
+  series,
+  positive,
+  benchmark,
+  dates,
+  currency,
+  locale,
+  intraday,
+  benchmarkLabel,
+}: {
+  series: number[];
+  positive: boolean;
+  /** Optional benchmark series, normalised to the same start value & timeline. */
+  benchmark?: number[] | null;
+  /** Unix-ms timestamp per point (same length as series) for the hover tooltip. */
+  dates?: number[];
+  currency: string;
+  locale: 'de' | 'en';
+  intraday?: boolean;
+  benchmarkLabel?: string;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   if (series.length < 2) return null;
+
   const W = 800;
   const H = 200;
   const PAD = 4;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
+  const hasBench = !!benchmark && benchmark.length === series.length;
+  // Shared scale so portfolio and benchmark are visually comparable.
+  const all = hasBench ? series.concat(benchmark as number[]) : series;
+  const min = Math.min(...all);
+  const max = Math.max(...all);
   const range = max - min || 1;
-  const pts = series.map((v, i) => ({
-    x: PAD + (i / (series.length - 1)) * (W - 2 * PAD),
-    y: PAD + (1 - (v - min) / range) * (H - 2 * PAD),
-  }));
-  const line = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const xOf = (i: number, n: number) => PAD + (i / (n - 1)) * (W - 2 * PAD);
+  const yOf = (v: number) => PAD + (1 - (v - min) / range) * (H - 2 * PAD);
+  const toLine = (s: number[]) => s.map((v, i) => `${xOf(i, s.length).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+  const line = toLine(series);
   const area = `${PAD},${H - PAD} ${line} ${W - PAD},${H - PAD}`;
   const color = positive ? '#26a69a' : '#ef5350';
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => PAD + f * (H - 2 * PAD));
+
+  const onMove = (e: React.MouseEvent) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    setHover(Math.round(frac * (series.length - 1)));
+  };
+
+  const hi = hover != null && hover >= 0 && hover < series.length ? hover : null;
+  const xFrac = hi != null ? hi / (series.length - 1) : 0;
+  const pYFrac = hi != null ? yOf(series[hi]) / H : 0;
+  const fmtDate = (t: number) => {
+    const loc = locale === 'de' ? 'de-DE' : 'en-US';
+    const d = new Date(t);
+    return intraday
+      ? d.toLocaleString(loc, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString(loc, { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-44">
-      <defs>
-        <linearGradient id="pf-value-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.01" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#pf-value-fill)" />
-      <polyline
-        points={line}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div ref={wrapRef} className="relative" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-44">
+        <defs>
+          <linearGradient id="pf-value-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        {grid.map((y, i) => (
+          <line
+            key={i}
+            x1="0"
+            x2={W}
+            y1={y}
+            y2={y}
+            stroke="rgb(var(--color-border))"
+            strokeOpacity="0.3"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        <polygon points={area} fill="url(#pf-value-fill)" />
+        {hasBench && (
+          <polyline
+            points={toLine(benchmark as number[])}
+            fill="none"
+            stroke="#94a3b8"
+            strokeWidth="1.5"
+            strokeDasharray="5 4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            opacity="0.85"
+          />
+        )}
+        <polyline
+          points={line}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {hi != null && (
+          <line
+            x1={xOf(hi, series.length)}
+            x2={xOf(hi, series.length)}
+            y1="0"
+            y2={H}
+            stroke={color}
+            strokeOpacity="0.45"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+      </svg>
+
+      {/* Hover marker (HTML element to avoid SVG non-uniform-scaling distortion) */}
+      {hi != null && (
+        <span
+          className="absolute w-2.5 h-2.5 rounded-full ring-2 ring-dark-800 pointer-events-none -translate-x-1/2 -translate-y-1/2"
+          style={{ left: `${xFrac * 100}%`, top: `${pYFrac * 100}%`, background: color }}
+        />
+      )}
+
+      {/* Tooltip */}
+      {hi != null && (
+        <div
+          className="absolute z-10 top-0 pointer-events-none bg-dark-800/95 ring-1 ring-border/20 rounded-lg px-2.5 py-1.5 text-xs shadow-depth backdrop-blur-sm whitespace-nowrap"
+          style={{
+            left: `${xFrac * 100}%`,
+            transform: `translateX(${xFrac > 0.5 ? 'calc(-100% - 8px)' : '8px'})`,
+          }}
+        >
+          {dates && dates[hi] != null && <div className="text-txt-muted mb-0.5">{fmtDate(dates[hi])}</div>}
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-0.5 rounded-full" style={{ background: color }} />
+            <span className="font-mono font-semibold text-txt-primary">{formatPrice(series[hi], currency, locale)}</span>
+          </div>
+          {hasBench && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="inline-block w-2 border-t border-dashed border-[#94a3b8]" />
+              <span className="text-txt-secondary">{benchmarkLabel}</span>
+              <span className="font-mono text-txt-secondary">{formatPrice((benchmark as number[])[hi], currency, locale)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -182,10 +331,16 @@ export default function Portfolio() {
   // Historical daily closes per symbol over a common 1y timeline (for the
   // value-over-time chart). Populated by the risk-analysis effect below, which
   // already fetches this data — avoids a second round-trip.
-  const [priceHistory, setPriceHistory] = useState<{
-    dates: string[];
-    closesBySymbol: Record<string, Record<string, number>>;
-  } | null>(null);
+  // Selected range + benchmark for the value-over-time chart, plus the raw
+  // per-symbol closes fetched for that range (kept separate from the 1y risk
+  // analysis). benchPts holds the benchmark's closes on the same timeline.
+  const [valueRange, setValueRange] = useState<ValueRangeKey>('1y');
+  const [benchKey, setBenchKey] = useState<string>('sp500');
+  const [rangeSeries, setRangeSeries] = useState<{
+    perSym: { symbol: string; pts: { t: number; close: number }[] }[];
+    benchPts: { t: number; close: number }[] | null;
+    loading: boolean;
+  }>({ perSym: [], benchPts: null, loading: true });
 
   const symbols = useMemo(
     () => holdings.map((h) => h.symbol),
@@ -212,6 +367,7 @@ export default function Portfolio() {
               change: q.regularMarketChange,
               changePercent: q.regularMarketChangePercent,
               currency: q.currency || 'USD',
+              quoteType: q.quoteType,
               dividendRate: q.trailingAnnualDividendRate,
               dividendDate: q.dividendDate,
             };
@@ -282,30 +438,131 @@ export default function Portfolio() {
     return sum;
   }, [realizedBySymbol, quotes, convertPrice]);
 
-  // Value-over-time series: current holdings valued at each historical close,
-  // converted to the display currency. Recomputes on currency toggle without
-  // refetching, because the raw closes are cached in priceHistory.
-  const valueSeries = useMemo(() => {
-    if (!priceHistory || holdings.length === 0) return [];
-    return priceHistory.dates.map((d) => {
-      let v = 0;
-      for (const h of holdings) {
-        const close = priceHistory.closesBySymbol[h.symbol]?.[d];
-        if (close == null) continue;
-        const cur = quotes[h.symbol]?.currency || 'USD';
-        v += convertPrice(h.shares * close, cur).value;
+  // Fetch historical closes for the selected range. Keyed only on symbols +
+  // range, so the 30s quote refresh doesn't trigger a refetch (server caches
+  // each range/interval anyway).
+  useEffect(() => {
+    if (symbols.length === 0) {
+      setRangeSeries({ perSym: [], benchPts: null, loading: false });
+      return;
+    }
+    const cfg = VALUE_RANGES.find((r) => r.key === valueRange) ?? VALUE_RANGES[3];
+    const benchSymbol = BENCHMARKS.find((b) => b.key === benchKey)?.symbol ?? null;
+    let cancelled = false;
+    setRangeSeries((prev) => ({ ...prev, loading: true }));
+
+    const toPts = (quotes: { date: string | number; close: number }[] | undefined) =>
+      (quotes ?? [])
+        .map((q) => ({
+          t: typeof q.date === 'number' ? q.date * 1000 : Date.parse(String(q.date)),
+          close: q.close as number,
+        }))
+        .filter((p) => isFinite(p.t) && p.close != null && isFinite(p.close))
+        .sort((a, b) => a.t - b.t);
+
+    (async () => {
+      try {
+        const [charts, bench] = await Promise.all([
+          Promise.all(symbols.map((s) => fetchChart(s, cfg.range, cfg.interval).catch(() => null))),
+          benchSymbol
+            ? fetchChart(benchSymbol, cfg.range, cfg.interval).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        const perSym = symbols.map((s, i) => ({ symbol: s, pts: toPts(charts[i]?.quotes) }));
+        const benchPts = bench ? toPts(bench.quotes) : null;
+        setRangeSeries({ perSym, benchPts, loading: false });
+      } catch {
+        if (!cancelled) setRangeSeries({ perSym: [], benchPts: null, loading: false });
       }
-      return v;
-    });
-  }, [priceHistory, holdings, quotes, convertPrice]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols, valueRange, benchKey]);
+
+  // Build the portfolio value series over the selected range: at each point in
+  // time, value the current holdings at the last-known close of each symbol
+  // (forward-filled so holidays and differing market hours don't punch holes),
+  // converted to the display currency. The opening value is back-filled so
+  // every holding contributes from the first data point.
+  const chartData = useMemo<{ portfolio: number[]; benchmark: number[] | null; dates: number[] }>(() => {
+    const { perSym, benchPts } = rangeSeries;
+    if (perSym.length === 0 || holdings.length === 0) return { portfolio: [], benchmark: null, dates: [] };
+    const sharesMap = new Map(holdings.map((h) => [h.symbol, h.shares]));
+    const allT = Array.from(new Set(perSym.flatMap((p) => p.pts.map((x) => x.t)))).sort(
+      (a, b) => a - b,
+    );
+    if (allT.length < 2) return { portfolio: [], benchmark: null, dates: [] };
+
+    const idx = perSym.map(() => 0);
+    const lastClose = perSym.map((p) => (p.pts.length ? p.pts[0].close : null));
+    // Benchmark forward-fill state (only when a benchmark is loaded).
+    const hasBench = !!benchPts && benchPts.length > 1;
+    let bIdx = 0;
+    let bLast: number | null = hasBench ? benchPts![0].close : null;
+    const portfolio: number[] = [];
+    const dates: number[] = [];
+    const benchRaw: number[] = [];
+
+    for (const t of allT) {
+      let v = 0;
+      let any = false;
+      perSym.forEach((p, j) => {
+        while (idx[j] < p.pts.length && p.pts[idx[j]].t <= t) {
+          lastClose[j] = p.pts[idx[j]].close;
+          idx[j]++;
+        }
+        const shares = sharesMap.get(p.symbol);
+        const close = lastClose[j];
+        if (close != null && shares != null) {
+          const cur = quotes[p.symbol]?.currency || 'USD';
+          v += convertPrice(shares * close, cur).value;
+          any = true;
+        }
+      });
+      if (!any) continue;
+      portfolio.push(v);
+      dates.push(t);
+      if (hasBench) {
+        while (bIdx < benchPts!.length && benchPts![bIdx].t <= t) {
+          bLast = benchPts![bIdx].close;
+          bIdx++;
+        }
+        benchRaw.push(bLast ?? benchPts![0].close);
+      }
+    }
+
+    // Normalise the benchmark to the portfolio's starting value so both lines
+    // begin at the same point ("same capital invested in the index").
+    let benchmark: number[] | null = null;
+    if (hasBench && portfolio.length > 1 && benchRaw.length === portfolio.length) {
+      const base = benchRaw[0];
+      const start = portfolio[0];
+      if (base > 0 && start > 0) {
+        benchmark = benchRaw.map((c) => start * (c / base));
+      }
+    }
+    return { portfolio, benchmark, dates };
+  }, [rangeSeries, holdings, quotes, convertPrice]);
+
+  const valueSeries = chartData.portfolio;
+  const benchmarkSeries = chartData.benchmark;
+
+  const pctReturn = (s: number[]) => {
+    if (s.length < 2 || s[0] <= 0) return null;
+    return (s[s.length - 1] - s[0]) / s[0];
+  };
 
   const periodReturn = useMemo(() => {
-    if (valueSeries.length < 2) return null;
-    const first = valueSeries[0];
-    const last = valueSeries[valueSeries.length - 1];
-    if (first <= 0) return null;
-    return { abs: last - first, pct: (last - first) / first };
+    const pct = pctReturn(valueSeries);
+    if (pct == null) return null;
+    return { abs: valueSeries[valueSeries.length - 1] - valueSeries[0], pct };
   }, [valueSeries]);
+
+  const benchmarkReturn = useMemo(() => (benchmarkSeries ? pctReturn(benchmarkSeries) : null), [benchmarkSeries]);
+  const benchmarkLabel = BENCHMARKS.find((b) => b.key === benchKey)?.label ?? '';
 
   // Dividend tracking: per-holding forward annual income (converted to the
   // display currency), yield, and yield-on-cost. Only dividend payers appear.
@@ -335,6 +592,20 @@ export default function Portfolio() {
     return { rows, totalIncome };
   }, [holdings, quotes, convertPrice]);
 
+  // Estimated income per calendar month (Jan–Dec). Quarterly schedule is
+  // assumed (the standard for most payers); each holding's payments are
+  // anchored at the month of its next known dividend date, then every 3 months.
+  // Approximate by design — clearly labelled as an estimate in the UI.
+  const monthlyDividends = useMemo(() => {
+    const months = new Array(12).fill(0) as number[];
+    for (const r of dividends.rows) {
+      const perPayment = r.income / 4;
+      const start = r.nextDate ? new Date(r.nextDate * 1000).getMonth() : 0;
+      for (let k = 0; k < 4; k++) months[(start + k * 3) % 12] += perPayment;
+    }
+    return months;
+  }, [dividends.rows]);
+
   // -----------------------------------------------------------------------
   // Donut chart data
   // -----------------------------------------------------------------------
@@ -352,6 +623,87 @@ export default function Portfolio() {
       };
     });
   }, [holdings, quotes, totalValue, convertPrice]);
+
+  // -----------------------------------------------------------------------
+  // Detailed allocation: sector / region / country & asset class via profiles
+  // -----------------------------------------------------------------------
+
+  const [profiles, setProfiles] = useState<
+    Record<string, { sector?: string; country?: string; category?: string }>
+  >({});
+  const [allocDim, setAllocDim] = useState<'class' | 'sector' | 'currency' | 'region'>('class');
+
+  useEffect(() => {
+    if (symbols.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        symbols.map(async (s) => {
+          try {
+            const f = await fetchFundamentals(s);
+            return [
+              s,
+              {
+                sector: f.summaryProfile?.sector,
+                country: f.summaryProfile?.country,
+                category: f.fundProfile?.categoryName,
+              },
+            ] as const;
+          } catch {
+            return [s, {}] as const;
+          }
+        }),
+      );
+      if (!cancelled) setProfiles(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols]);
+
+  const allocationBreakdown = useMemo(() => {
+    if (holdings.length === 0 || totalValue === 0) return [];
+    const na = de ? 'k.A.' : 'N/A';
+
+    const labelFor = (symbol: string): string => {
+      const q = quotes[symbol];
+      const prof = profiles[symbol] || {};
+      const qt = q?.quoteType;
+      if (allocDim === 'currency') return q?.currency || 'USD';
+      if (allocDim === 'class') {
+        if (qt === 'CRYPTOCURRENCY') return de ? 'Krypto' : 'Crypto';
+        if (qt === 'ETF' || qt === 'MUTUALFUND') {
+          const c = (prof.category || '').toLowerCase();
+          if (c.includes('bond') || c.includes('anleihe') || c.includes('fixed income'))
+            return de ? 'Anleihen' : 'Bonds';
+          return de ? 'ETF/Fonds' : 'ETF/Funds';
+        }
+        if (qt === 'EQUITY') return de ? 'Aktien' : 'Stocks';
+        return de ? 'Sonstige' : 'Other';
+      }
+      if (allocDim === 'sector') {
+        if (qt === 'CRYPTOCURRENCY') return de ? 'Krypto' : 'Crypto';
+        if (qt === 'ETF' || qt === 'MUTUALFUND') return prof.category || (de ? 'ETF/Fonds' : 'ETF/Funds');
+        return prof.sector || na;
+      }
+      // region (country of domicile / listing)
+      if (qt === 'CRYPTOCURRENCY') return de ? 'Global' : 'Global';
+      return prof.country || na;
+    };
+
+    const map = new Map<string, number>();
+    for (const h of holdings) {
+      const q = quotes[h.symbol];
+      const price = q?.price ?? h.avgPrice;
+      const mv = convertPrice(h.shares * price, q?.currency || 'USD').value;
+      const key = labelFor(h.symbol);
+      map.set(key, (map.get(key) ?? 0) + mv);
+    }
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value, pct: value / totalValue }))
+      .sort((a, b) => b.value - a.value)
+      .map((row, i) => ({ ...row, color: DONUT_COLORS[i % DONUT_COLORS.length] }));
+  }, [holdings, quotes, profiles, allocDim, totalValue, convertPrice, de]);
 
   // -----------------------------------------------------------------------
   // Risk analysis
@@ -408,16 +760,8 @@ export default function Portfolio() {
 
         if (commonDates.length < 2) {
           setRiskMetrics({ ...INITIAL_RISK_METRICS, loading: false });
-          setPriceHistory(null);
           return;
         }
-
-        // Stash the aligned closes for the value-over-time chart.
-        const closesBySymbol: Record<string, Record<string, number>> = {};
-        symbols.forEach((sym, j) => {
-          closesBySymbol[sym] = holdingClosesByDate[j];
-        });
-        setPriceHistory({ dates: commonDates, closesBySymbol });
 
         // Compute weights for each holding based on current value
         const weights = holdings.map((h) => {
@@ -726,7 +1070,7 @@ export default function Portfolio() {
         <div className="absolute inset-0 bg-accent/5 border-2 border-dashed border-accent/40 rounded-xl z-10 flex items-center justify-center pointer-events-none">
           <div className="bg-dark-800/90 px-6 py-4 rounded-xl flex items-center gap-3 shadow-lg">
             <Download className="w-6 h-6 text-accent" />
-            <span className="text-lg font-semibold text-txt-primary">Aktie ins Portfolio legen</span>
+            <span className="text-lg font-semibold text-txt-primary">{de ? 'Aktie ins Portfolio legen' : 'Drop stock into portfolio'}</span>
           </div>
         </div>
       )}
@@ -736,7 +1080,7 @@ export default function Portfolio() {
           <div className="p-2 rounded-xl bg-accent/10">
             <Briefcase className="w-6 h-6 text-accent" />
           </div>
-          <h1 className="section-title text-2xl">Portfolioübersicht</h1>
+          <h1 className="section-title text-2xl">{de ? 'Portfolioübersicht' : 'Portfolio overview'}</h1>
         </div>
         <div className="flex items-center gap-1">
           <input
@@ -786,7 +1130,7 @@ export default function Portfolio() {
               <DollarSign className="w-4 h-4 text-accent" />
             </div>
             <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-              Gesamtwert
+              {de ? 'Gesamtwert' : 'Total value'}
             </span>
           </div>
           <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
@@ -801,7 +1145,7 @@ export default function Portfolio() {
               <Briefcase className="w-4 h-4 text-accent" />
             </div>
             <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-              Investiert
+              {de ? 'Investiert' : 'Invested'}
             </span>
           </div>
           <p className="text-2xl font-bold text-txt-primary font-mono tabular-nums tracking-tight">
@@ -816,7 +1160,7 @@ export default function Portfolio() {
               {totalPnl >= 0 ? <TrendingUp className="w-4 h-4 text-success" /> : <TrendingDown className="w-4 h-4 text-danger" />}
             </div>
             <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-              Gewinn/Verlust
+              {de ? 'Gewinn/Verlust' : 'Profit/Loss'}
             </span>
           </div>
           <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(totalPnl)}`}>
@@ -832,7 +1176,7 @@ export default function Portfolio() {
               {dayChange >= 0 ? <TrendingUp className="w-4 h-4 text-success" /> : <TrendingDown className="w-4 h-4 text-danger" />}
             </div>
             <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-              Tagesveränderung
+              {de ? 'Tagesveränderung' : 'Day change'}
             </span>
           </div>
           <p className={`text-2xl font-bold font-mono tabular-nums tracking-tight ${pnlColor(dayChange)}`}>
@@ -853,29 +1197,101 @@ export default function Portfolio() {
               <div className="p-1.5 rounded-lg bg-accent/10">
                 <LineChart className="w-5 h-5 text-accent" />
               </div>
-              <h2 className="section-title text-lg">Wertentwicklung</h2>
+              <h2 className="section-title text-lg">{de ? 'Wertentwicklung' : 'Performance'}</h2>
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-medium">
-                1 Jahr · aktuelle Bestände
+                {de ? 'aktuelle Bestände' : 'current holdings'}
               </span>
             </div>
-            {periodReturn && (
-              <span
-                className={`text-sm font-mono font-semibold px-2.5 py-1 rounded-lg ${
-                  periodReturn.pct >= 0 ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
-                }`}
+            <div className="flex items-center gap-2 flex-wrap">
+              {periodReturn && (
+                <span
+                  className={`text-sm font-mono font-semibold px-2.5 py-1 rounded-lg ${
+                    periodReturn.pct >= 0 ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                  }`}
+                >
+                  {formatPercent(periodReturn.pct * 100)}
+                </span>
+              )}
+              {/* Time-range selector: 1D / 1W / 1M / 1Y / 5Y / All time */}
+              <div className="flex items-center gap-0.5 bg-dark-700/40 rounded-lg p-0.5 ring-1 ring-border/5">
+                {VALUE_RANGES.map((r) => (
+                  <button
+                    key={r.key}
+                    onClick={() => setValueRange(r.key)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors duration-150 ${
+                      valueRange === r.key
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-txt-muted hover:text-txt-primary hover:bg-dark-600/40'
+                    }`}
+                  >
+                    {de ? r.de : r.en}
+                  </button>
+                ))}
+              </div>
+              {/* Benchmark selector */}
+              <select
+                value={benchKey}
+                onChange={(e) => setBenchKey(e.target.value)}
+                title={de ? 'Vergleichsindex' : 'Benchmark'}
+                className="bg-dark-700/40 ring-1 ring-border/5 rounded-lg px-2 py-1.5 text-xs font-semibold text-txt-secondary hover:text-txt-primary focus:outline-none focus:ring-accent/40 cursor-pointer"
               >
-                {formatPercent(periodReturn.pct * 100)}
-              </span>
-            )}
+                {BENCHMARKS.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.symbol ? `vs ${b.label}` : de ? 'kein Vergleich' : 'no benchmark'}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {riskMetrics.loading && valueSeries.length === 0 ? (
+          {rangeSeries.loading && valueSeries.length === 0 ? (
             <div className="h-44 rounded-xl skeleton-shimmer" />
           ) : valueSeries.length >= 2 ? (
-            <ValueChart series={valueSeries} positive={(periodReturn?.pct ?? 0) >= 0} />
+            <>
+              <ValueChart
+                series={valueSeries}
+                positive={(periodReturn?.pct ?? 0) >= 0}
+                benchmark={benchmarkSeries}
+                dates={chartData.dates}
+                currency={displayCcy}
+                locale={locale}
+                intraday={valueRange === '1d' || valueRange === '1w'}
+                benchmarkLabel={benchmarkLabel}
+              />
+              {/* Legend + benchmark comparison */}
+              {benchmarkReturn != null && periodReturn && (
+                <div className="flex items-center justify-center gap-4 flex-wrap text-xs pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-0.5 rounded-full bg-accent" />
+                    <span className="text-txt-secondary">{de ? 'Portfolio' : 'Portfolio'}</span>
+                    <span className={`font-mono font-semibold ${pnlColor(periodReturn.pct)}`}>
+                      {formatPercent(periodReturn.pct * 100)}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 border-t border-dashed border-[#94a3b8]" />
+                    <span className="text-txt-secondary">{benchmarkLabel}</span>
+                    <span className={`font-mono font-semibold ${pnlColor(benchmarkReturn)}`}>
+                      {formatPercent(benchmarkReturn * 100)}
+                    </span>
+                  </span>
+                  <span
+                    className={`font-mono font-semibold px-2 py-0.5 rounded-md ${
+                      periodReturn.pct - benchmarkReturn >= 0
+                        ? 'bg-success/10 text-success'
+                        : 'bg-danger/10 text-danger'
+                    }`}
+                  >
+                    {periodReturn.pct - benchmarkReturn >= 0 ? '▲' : '▼'}{' '}
+                    {formatPercent(Math.abs(periodReturn.pct - benchmarkReturn) * 100)}{' '}
+                    {de ? 'ggü. Index' : 'vs index'}
+                  </span>
+                </div>
+              )}
+            </>
           ) : (
             <div className="h-44 flex items-center justify-center text-sm text-txt-muted">
-              Nicht genügend Verlaufsdaten verfügbar.
+              {de ? 'Nicht genügend Verlaufsdaten verfügbar.' : 'Not enough history available.'}
             </div>
           )}
 
@@ -883,7 +1299,7 @@ export default function Portfolio() {
           <div className="grid grid-cols-3 gap-3 pt-1">
             <div className="bg-dark-700/40 rounded-xl p-3 ring-1 ring-border/5">
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
-                Realisiert
+                {de ? 'Realisiert' : 'Realized'}
               </span>
               <p className={`text-base font-bold font-mono tabular-nums mt-0.5 ${pnlColor(realizedPnl)}`}>
                 <Price value={realizedPnl} currency={displayCcy} size={14} tone={realizedPnl >= 0 ? 'positive' : 'negative'} />
@@ -891,7 +1307,7 @@ export default function Portfolio() {
             </div>
             <div className="bg-dark-700/40 rounded-xl p-3 ring-1 ring-border/5">
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
-                Unrealisiert
+                {de ? 'Unrealisiert' : 'Unrealized'}
               </span>
               <p className={`text-base font-bold font-mono tabular-nums mt-0.5 ${pnlColor(totalPnl)}`}>
                 <Price value={totalPnl} currency={displayCcy} size={14} tone={totalPnl >= 0 ? 'positive' : 'negative'} />
@@ -899,12 +1315,72 @@ export default function Portfolio() {
             </div>
             <div className="bg-dark-700/40 rounded-xl p-3 ring-1 ring-border/5">
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
-                Gesamt G/V
+                {de ? 'Gesamt G/V' : 'Total P&L'}
               </span>
               <p className={`text-base font-bold font-mono tabular-nums mt-0.5 ${pnlColor(realizedPnl + totalPnl)}`}>
                 <Price value={realizedPnl + totalPnl} currency={displayCcy} size={14} tone={realizedPnl + totalPnl >= 0 ? 'positive' : 'negative'} />
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Detailed allocation breakdown                                     */}
+      {/* ----------------------------------------------------------------- */}
+
+      {holdings.length > 0 && (
+        <div className="card p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-accent/10">
+                <Layers className="w-5 h-5 text-accent" />
+              </div>
+              <h2 className="section-title text-lg">{de ? 'Allokation im Detail' : 'Allocation breakdown'}</h2>
+            </div>
+            <div className="flex items-center gap-0.5 bg-dark-700/40 rounded-lg p-0.5 ring-1 ring-border/5">
+              {([
+                ['class', de ? 'Anlageklasse' : 'Asset class'],
+                ['sector', de ? 'Sektor' : 'Sector'],
+                ['currency', de ? 'Währung' : 'Currency'],
+                ['region', 'Region'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setAllocDim(key)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors duration-150 ${
+                    allocDim === key
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-txt-muted hover:text-txt-primary hover:bg-dark-600/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            {allocationBreakdown.map((row) => (
+              <div key={row.label} className="space-y-1">
+                <div className="flex items-center justify-between text-xs gap-2">
+                  <span className="flex items-center gap-2 text-txt-secondary truncate">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: row.color }} />
+                    <span className="truncate">{row.label}</span>
+                  </span>
+                  <span className="font-mono text-txt-primary whitespace-nowrap tabular-nums">
+                    {(row.pct * 100).toFixed(1)}% ·{' '}
+                    <Price value={row.value} currency={displayCcy} size={11} />
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-dark-700/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${Math.max(1.5, row.pct * 100)}%`, background: row.color }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -921,7 +1397,7 @@ export default function Portfolio() {
               <div className="p-1.5 rounded-lg bg-accent/10">
                 <PieChart className="w-5 h-5 text-accent" />
               </div>
-              <h2 className="section-title text-lg">Allokation</h2>
+              <h2 className="section-title text-lg">{de ? 'Allokation' : 'Allocation'}</h2>
             </div>
 
             <svg viewBox="0 0 200 200" className="w-48 h-48">
@@ -971,7 +1447,7 @@ export default function Portfolio() {
                 className="fill-txt-muted"
                 fontSize="10"
               >
-                Gesamtwert
+                {de ? 'Gesamtwert' : 'Total value'}
               </text>
             </svg>
 
@@ -996,21 +1472,21 @@ export default function Portfolio() {
               <div className="p-1.5 rounded-lg bg-accent/10">
                 <Briefcase className="w-5 h-5 text-accent" />
               </div>
-              <h2 className="section-title text-lg">Bestände</h2>
+              <h2 className="section-title text-lg">{de ? 'Bestände' : 'Holdings'}</h2>
             </div>
 
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/10">
-                  <th className="text-left px-5 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Aktie</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Anteile</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Ø Preis</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Kurs</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Marktwert</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">G/V</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">G/V (%)</th>
-                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">Gewicht</th>
+                  <th className="text-left px-5 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Aktie' : 'Stock'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Anteile' : 'Shares'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Ø Preis' : 'Avg price'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Kurs' : 'Price'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Marktwert' : 'Market value'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'G/V' : 'P&L'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'G/V (%)' : 'P&L (%)'}</th>
+                  <th className="text-right px-3 py-3 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Gewicht' : 'Weight'}</th>
                   <th className="px-3 py-3"></th>
                 </tr>
               </thead>
@@ -1071,7 +1547,7 @@ export default function Portfolio() {
                             e.stopPropagation();
                             removeHolding(h.id);
                           }}
-                          title="Bestand entfernen"
+                          title={de ? 'Bestand entfernen' : 'Remove holding'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1088,8 +1564,9 @@ export default function Portfolio() {
         <div className="card p-12 text-center space-y-3">
           <Briefcase className="w-12 h-12 mx-auto text-txt-muted/30" />
           <p className="text-txt-secondary">
-            Noch keine Bestände vorhanden. Füge eine Transaktion hinzu, um zu
-            beginnen.
+            {de
+              ? 'Noch keine Bestände vorhanden. Füge eine Transaktion hinzu, um zu beginnen.'
+              : 'No holdings yet. Add a transaction to get started.'}
           </p>
         </div>
       )}
@@ -1104,7 +1581,7 @@ export default function Portfolio() {
             <div className="p-1.5 rounded-lg bg-accent/10">
               <ShieldAlert className="w-5 h-5 text-accent" />
             </div>
-            <h2 className="section-title text-lg">Risiko-Analyse</h2>
+            <h2 className="section-title text-lg">{de ? 'Risiko-Analyse' : 'Risk analysis'}</h2>
           </div>
 
           {riskMetrics.loading ? (
@@ -1135,7 +1612,7 @@ export default function Portfolio() {
                   {riskMetrics.sharpeRatio.toFixed(2)}
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Risikobereinigte Rendite ({'>'}1 = gut)
+                  {de ? 'Risikobereinigte Rendite' : 'Risk-adjusted return'} ({'>'}1 = {de ? 'gut' : 'good'})
                 </p>
               </div>
 
@@ -1156,7 +1633,7 @@ export default function Portfolio() {
                   {riskMetrics.sortinoRatio.toFixed(2)}
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Abwärtsrisiko-bereinigte Rendite ({'>'}1.5 = gut)
+                  {de ? 'Abwärtsrisiko-bereinigte Rendite' : 'Downside-adjusted return'} ({'>'}1.5 = {de ? 'gut' : 'good'})
                 </p>
               </div>
 
@@ -1177,7 +1654,7 @@ export default function Portfolio() {
                   -{(riskMetrics.maxDrawdownPercent * 100).toFixed(2)}%
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Größter Rückgang vom Hoch
+                  {de ? 'Größter Rückgang vom Hoch' : 'Largest drop from peak'}
                 </p>
               </div>
 
@@ -1198,7 +1675,7 @@ export default function Portfolio() {
                   -{(riskMetrics.valueAtRisk * 100).toFixed(2)}%
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Max. Tagesverlust (95% Konf.)
+                  {de ? 'Max. Tagesverlust (95% Konf.)' : 'Max daily loss (95% conf.)'}
                 </p>
               </div>
 
@@ -1219,14 +1696,14 @@ export default function Portfolio() {
                   {riskMetrics.beta.toFixed(2)}
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Marktrisiko vs. S&P 500 (1 = Markt)
+                  {de ? 'Marktrisiko vs. S&P 500 (1 = Markt)' : 'Market risk vs S&P 500 (1 = market)'}
                 </p>
               </div>
 
               {/* Volatilität */}
               <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5 hover:bg-dark-700/60 transition-colors duration-200">
                 <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
-                  Volatilität
+                  {de ? 'Volatilität' : 'Volatility'}
                 </span>
                 <p
                   className={`text-xl font-bold font-mono tabular-nums mt-1 ${
@@ -1240,7 +1717,7 @@ export default function Portfolio() {
                   {(riskMetrics.annualVolatility * 100).toFixed(2)}%
                 </p>
                 <p className="text-[10px] text-txt-muted mt-1">
-                  Annualisierte Schwankungsbreite
+                  {de ? 'Annualisierte Schwankungsbreite' : 'Annualised volatility'}
                 </p>
               </div>
             </div>
@@ -1258,14 +1735,14 @@ export default function Portfolio() {
             <div className="p-1.5 rounded-lg bg-accent/10">
               <Coins className="w-5 h-5 text-accent" />
             </div>
-            <h2 className="section-title text-lg">Dividenden</h2>
+            <h2 className="section-title text-lg">{de ? 'Dividenden' : 'Dividends'}</h2>
           </div>
 
           {/* Summary tiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
-                Prognose Jahreseinkommen
+                {de ? 'Prognose Jahreseinkommen' : 'Projected annual income'}
               </span>
               <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-success">
                 <Price value={dividends.totalIncome} currency={displayCcy} size={16} tone="positive" />
@@ -1273,7 +1750,7 @@ export default function Portfolio() {
             </div>
             <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
               <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
-                Ø Dividendenrendite
+                {de ? 'Ø Dividendenrendite' : 'Avg dividend yield'}
               </span>
               <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-txt-primary">
                 {(totalValue > 0 ? (dividends.totalIncome / totalValue) * 100 : 0).toFixed(2)}%
@@ -1287,19 +1764,57 @@ export default function Portfolio() {
                 {(investedValue > 0 ? (dividends.totalIncome / investedValue) * 100 : 0).toFixed(2)}%
               </p>
             </div>
+            <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
+              <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold block">
+                {de ? 'Ø pro Monat' : 'Avg per month'}
+              </span>
+              <p className="text-xl font-bold font-mono tabular-nums mt-0.5 text-success">
+                <Price value={dividends.totalIncome / 12} currency={displayCcy} size={16} tone="positive" />
+              </p>
+            </div>
           </div>
+
+          {/* Monthly distribution (estimated, quarterly schedule assumed) */}
+          {(() => {
+            const maxM = Math.max(...monthlyDividends, 1);
+            const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+            const FULL = de
+              ? ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+              : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            return (
+              <div className="bg-dark-700/40 rounded-xl p-4 ring-1 ring-border/5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+                    {de ? 'Ausschüttungen pro Monat' : 'Distributions per month'}
+                  </span>
+                  <span className="text-[10px] text-txt-muted italic">{de ? 'geschätzt · vierteljährlich angenommen' : 'estimated · quarterly assumed'}</span>
+                </div>
+                <div className="flex items-end justify-between gap-1.5 h-24">
+                  {monthlyDividends.map((v, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 group" title={`${FULL[i]}: ${v.toFixed(0)} ${displayCcy === 'EUR' ? '€' : '$'}`}>
+                      <div
+                        className="w-full rounded-t bg-accent/70 group-hover:bg-accent transition-all duration-200 min-h-[2px]"
+                        style={{ height: `${(v / maxM) * 100}%` }}
+                      />
+                      <span className="text-[9px] text-txt-muted font-mono">{MONTHS[i]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Per-holding table */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/10">
-                  <th className="text-left px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Aktie</th>
-                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Rendite</th>
-                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Div./Aktie</th>
-                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Jahreseinkommen</th>
+                  <th className="text-left px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Aktie' : 'Stock'}</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Rendite' : 'Yield'}</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Div./Aktie' : 'Div./share'}</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Jahreseinkommen' : 'Annual income'}</th>
                   <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">YoC</th>
-                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">Nächste Zahlung</th>
+                  <th className="text-right px-3 py-2.5 text-xs text-txt-muted font-semibold uppercase tracking-wider">{de ? 'Nächste Zahlung' : 'Next payment'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1325,7 +1840,7 @@ export default function Portfolio() {
                       {r.nextDate ? (
                         <span className="inline-flex items-center gap-1 justify-end">
                           <CalendarClock className="w-3 h-3" />
-                          {new Date(r.nextDate * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          {new Date(r.nextDate * 1000).toLocaleDateString(de ? 'de-DE' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </span>
                       ) : '—'}
                     </td>
@@ -1351,7 +1866,7 @@ export default function Portfolio() {
               <Plus className="w-5 h-5 text-accent" />
             </div>
             <span className="font-semibold text-txt-primary">
-              Transaktion hinzufügen
+              {de ? 'Transaktion hinzufügen' : 'Add transaction'}
             </span>
           </div>
           <span
@@ -1371,11 +1886,11 @@ export default function Portfolio() {
             {/* Symbol search */}
             <div className="relative">
               <label className="block text-xs text-txt-muted mb-1">
-                Aktie / Symbol
+                {de ? 'Aktie / Symbol' : 'Stock / symbol'}
               </label>
               <input
                 className="input w-full"
-                placeholder="z.B. AAPL"
+                placeholder={de ? 'z.B. AAPL' : 'e.g. AAPL'}
                 value={formSymbol}
                 onChange={(e) => handleSymbolChange(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
@@ -1408,7 +1923,7 @@ export default function Portfolio() {
 
             {/* Buy / Sell toggle */}
             <div>
-              <label className="block text-xs text-txt-muted mb-1">Typ</label>
+              <label className="block text-xs text-txt-muted mb-1">{de ? 'Typ' : 'Type'}</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1419,7 +1934,7 @@ export default function Portfolio() {
                   }`}
                   onClick={() => setFormType('buy')}
                 >
-                  Kauf
+                  {de ? 'Kauf' : 'Buy'}
                 </button>
                 <button
                   type="button"
@@ -1430,7 +1945,7 @@ export default function Portfolio() {
                   }`}
                   onClick={() => setFormType('sell')}
                 >
-                  Verkauf
+                  {de ? 'Verkauf' : 'Sell'}
                 </button>
               </div>
             </div>
@@ -1439,7 +1954,7 @@ export default function Portfolio() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-txt-muted mb-1">
-                  Anteile
+                  {de ? 'Anteile' : 'Shares'}
                 </label>
                 <input
                   type="number"
@@ -1453,7 +1968,7 @@ export default function Portfolio() {
               </div>
               <div>
                 <label className="block text-xs text-txt-muted mb-1">
-                  Preis
+                  {de ? 'Preis' : 'Price'}
                 </label>
                 <input
                   type="number"
@@ -1469,7 +1984,7 @@ export default function Portfolio() {
 
             <button type="submit" className="btn-primary w-full">
               <DollarSign className="w-4 h-4 inline-block mr-1" />
-              {formType === 'buy' ? 'Kaufen' : 'Verkaufen'}
+              {formType === 'buy' ? (de ? 'Kaufen' : 'Buy') : (de ? 'Verkaufen' : 'Sell')}
             </button>
           </form>
         )}
@@ -1485,7 +2000,7 @@ export default function Portfolio() {
             <div className="p-1.5 rounded-lg bg-accent/10">
               <DollarSign className="w-5 h-5 text-accent" />
             </div>
-            <h2 className="section-title text-lg">Letzte Transaktionen</h2>
+            <h2 className="section-title text-lg">{de ? 'Letzte Transaktionen' : 'Recent transactions'}</h2>
           </div>
 
           <ul className="space-y-1">
@@ -1502,17 +2017,17 @@ export default function Portfolio() {
                         : 'bg-danger/15 text-danger'
                     }`}
                   >
-                    {tx.type === 'buy' ? 'Kauf' : 'Verkauf'}
+                    {tx.type === 'buy' ? (de ? 'Kauf' : 'Buy') : (de ? 'Verkauf' : 'Sell')}
                   </span>
                   <span className="font-mono font-bold text-accent">
                     {tx.symbol}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-txt-secondary font-mono tabular-nums">
-                  <span>{tx.shares} Stk.</span>
+                  <span>{tx.shares} {de ? 'Stk.' : 'sh.'}</span>
                   <span className="inline-flex items-center gap-1">@ <Price value={tx.price} currency="USD" size={11} /></span>
                   <span className="text-txt-muted text-xs">
-                    {new Date(tx.date).toLocaleDateString('de-DE', {
+                    {new Date(tx.date).toLocaleDateString(de ? 'de-DE' : 'en-US', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',

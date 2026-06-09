@@ -1081,13 +1081,40 @@ export function startServer(staticDir?: string, port: number = 3001): Promise<nu
     });
   }
 
-  return new Promise((resolve) => {
-    const server = app.listen(port, () => {
-      const addr = server.address();
-      const actualPort = typeof addr === 'object' && addr ? addr.port : port;
-      console.log(`\n  StockAnalyzer running at http://localhost:${actualPort}\n`);
-      resolve(actualPort);
-    });
+  // Bind to a STABLE port so the renderer's origin (http://localhost:<port>)
+  // stays constant across launches — otherwise Chromium keys localStorage by a
+  // new origin every start and all persisted data (portfolio, watchlist,
+  // drawings, alerts) appears to vanish. If the preferred port is taken we walk
+  // up a small deterministic range before finally falling back to a random
+  // port (last resort: app still works, but storage won't persist that run).
+  return new Promise((resolve, reject) => {
+    const MAX_TRIES = 16;
+    let attempt = 0;
+
+    const tryListen = (p: number) => {
+      const server = app.listen(p, () => {
+        const addr = server.address();
+        const actualPort = typeof addr === 'object' && addr ? addr.port : p;
+        console.log(`\n  StockAnalyzer running at http://localhost:${actualPort}\n`);
+        resolve(actualPort);
+      });
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE' && p !== 0) {
+          if (attempt < MAX_TRIES) {
+            attempt++;
+            tryListen(p + 1);
+          } else {
+            // Give up on a stable port; let the OS pick one so the app runs.
+            console.warn(`  Preferred port range busy — falling back to a random port (storage won't persist this run).`);
+            tryListen(0);
+          }
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    tryListen(port);
   });
 }
 

@@ -42,8 +42,12 @@ async function createWindow() {
       .catch(() => {});
   };
 
-  // Start server (also pre-warms Yahoo auth in background)
-  const port = await startServer(distPath, 0); // port 0 = random available port
+  // Start server on a STABLE port. The renderer loads from
+  // http://localhost:<port>, and Chromium keys localStorage by that origin —
+  // so a fixed port is what keeps the portfolio, watchlist, drawings and alerts
+  // persisted across restarts. startServer walks up from here if the port is
+  // taken (and only falls back to a random port as a last resort).
+  const port = await startServer(distPath, 38473);
   splashStatus('Marktdaten werden geladen…');
 
   mainWindow = new BrowserWindow({

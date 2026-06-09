@@ -13,7 +13,7 @@ const DISPLAY_CURRENCY_KEY = 'stockanalyzer_displaycurrency';
 const SPLIT_FLAP_KEY = 'stockanalyzer_splitflap';
 const ACCENT_KEY = 'stockanalyzer_accent';
 
-export type AccentColor = 'blue' | 'green' | 'violet' | 'amber';
+export type AccentColor = 'blue' | 'green' | 'violet' | 'amber' | 'rose' | 'cyan' | 'teal';
 
 interface AccentDef {
   label: string;
@@ -28,6 +28,9 @@ export const ACCENTS: Record<AccentColor, AccentDef> = {
   green:  { label: 'Grün',    accent: '#10b981', rgb: '16 185 129',  hover: '#059669', light: '#34d399' },
   violet: { label: 'Violett', accent: '#7c4dff', rgb: '124 77 255',  hover: '#6a35f0', light: '#9d7bff' },
   amber:  { label: 'Amber',   accent: '#f59e0b', rgb: '245 158 11',  hover: '#d97f06', light: '#fbbf24' },
+  rose:   { label: 'Rosé',    accent: '#f43f5e', rgb: '244 63 94',   hover: '#e11d48', light: '#fb7185' },
+  cyan:   { label: 'Cyan',    accent: '#06b6d4', rgb: '6 182 212',   hover: '#0891b2', light: '#22d3ee' },
+  teal:   { label: 'Teal',    accent: '#14b8a6', rgb: '20 184 166',  hover: '#0d9488', light: '#2dd4bf' },
 };
 
 const DEFAULT_WATCHLIST: WatchlistItem[] = [

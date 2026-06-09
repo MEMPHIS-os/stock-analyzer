@@ -5,6 +5,7 @@ import { SplitFlap } from './SplitFlap';
 
 const ACCENT_LABELS_EN: Record<AccentColor, string> = {
   blue: 'Blue', green: 'Green', violet: 'Violet', amber: 'Amber',
+  rose: 'Rose', cyan: 'Cyan', teal: 'Teal',
 };
 
 const SHORTCUTS = [
