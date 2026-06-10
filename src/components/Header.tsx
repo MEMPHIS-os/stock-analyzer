@@ -125,14 +125,17 @@ export default function Header() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 group/nav ${
                 isActive
                   ? 'text-accent bg-accent/10 shadow-glow-sm'
                   : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/50'
               }`}
             >
-              <item.icon className={`w-4 h-4 ${isActive ? 'text-accent' : ''}`} />
+              <item.icon
+                className={`w-4 h-4 transition-transform duration-200 group-hover/nav:scale-110 group-hover/nav:-translate-y-px ${isActive ? 'text-accent' : ''}`}
+              />
               {item.label}
+              {isActive && <span className="nav-underline" aria-hidden="true" />}
             </Link>
           );
         })}
@@ -140,7 +143,7 @@ export default function Header() {
         <div className="relative" ref={moreRef}>
           <button
             onClick={() => setMoreOpen((prev) => !prev)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+            className={`relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 ${
               moreIsActive
                 ? 'text-accent bg-accent/10 shadow-glow-sm'
                 : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/50'
@@ -148,6 +151,7 @@ export default function Header() {
           >
             {locale === 'de' ? 'Mehr' : 'More'}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${moreOpen ? 'rotate-180' : ''}`} />
+            {moreIsActive && <span className="nav-underline" aria-hidden="true" />}
           </button>
           {moreOpen && (
             <div className="absolute top-full left-0 mt-2 rounded-xl shadow-depth-lg py-1.5 min-w-[200px] z-50 animate-scale-in overflow-hidden"

@@ -24,6 +24,9 @@ function cleanupBeforeQuit() {
   } catch {}
   try {
     httpServer?.close();
+    // Also drop keep-alive sockets (the renderer holds open connections) so
+    // the port is released immediately, not when the sockets time out.
+    (httpServer as any)?.closeAllConnections?.();
   } catch {}
 }
 
@@ -295,6 +298,17 @@ function setupAutoUpdater() {
     // "app just closes, installer never runs" / crash class of bugs).
     setImmediate(() => {
       try {
+        // Destroy all windows FIRST so the app exits the moment quitAndInstall
+        // spawns the installer. A 2026-06-09 install failure showed the old
+        // process lingering ~23s after the installer started — the silent NSIS
+        // installer raced the still-running app, wiped the install dir and
+        // aborted, leaving no app installed. Destroyed windows = nothing keeps
+        // the process (or file locks) alive.
+        for (const w of BrowserWindow.getAllWindows()) {
+          try {
+            w.destroy();
+          } catch {}
+        }
         // oneClick NSIS (per-user, no UAC): silent install + force relaunch.
         // NB: isForceRunAfter is ignored unless isSilent is true.
         autoUpdater.quitAndInstall(true, true);
@@ -343,7 +357,9 @@ app.on('before-quit', cleanupBeforeQuit);
 
 app.on('window-all-closed', () => {
   cleanupBeforeQuit();
-  app.quit();
+  // During an update install, quitAndInstall owns the quit — calling app.quit()
+  // here too would race it (we destroy the windows right before installing).
+  if (!isQuittingForUpdate) app.quit();
 });
 
 app.on('activate', () => {

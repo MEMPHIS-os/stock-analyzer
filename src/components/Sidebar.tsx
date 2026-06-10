@@ -8,7 +8,6 @@ import {
   X,
   GripVertical,
   ChevronDown,
-  ChevronRight,
   FolderPlus,
   MoreVertical,
 } from 'lucide-react';
@@ -585,11 +584,9 @@ export default function Sidebar() {
                   className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-txt-muted hover:text-txt-secondary hover:bg-dark-700/30 transition-all duration-150"
                   onClick={() => toggleGroup(section.label)}
                 >
-                  {isCollapsed ? (
-                    <ChevronRight className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
+                  <ChevronDown
+                    className={`w-3 h-3 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : ''}`}
+                  />
                   {section.label}
                   <span className="ml-auto text-[10px] font-normal bg-dark-700/40 px-1.5 py-0.5 rounded-full">
                     {section.items.length}
@@ -597,28 +594,31 @@ export default function Sidebar() {
                 </button>
               )}
 
-              {!isCollapsed &&
-                section.items.map(({ item, globalIndex }) => (
-                  <WatchlistRow
-                    key={item.symbol}
-                    item={item}
-                    globalIndex={globalIndex}
-                    quote={quotes[item.symbol]}
-                    sparkData={sparklines[item.symbol] || []}
-                    dragIndex={dragIndex}
-                    dropTargetIndex={dropTargetIndex}
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    onDragEnd={handleDragEnd}
-                    onNavigate={handleItemClick}
-                    onRemove={handleRemoveWithToast}
-                    onOpenMenu={handleOpenMenu}
-                    fpSidebar={fpSidebar}
-                    flash={flashSymbols[item.symbol]}
-                    flashKey={flashKey}
-                  />
-                ))}
+              <div className={`collapse-grid ${isCollapsed ? 'collapsed' : ''}`}>
+                <div className="collapse-inner">
+                  {section.items.map(({ item, globalIndex }) => (
+                    <WatchlistRow
+                      key={item.symbol}
+                      item={item}
+                      globalIndex={globalIndex}
+                      quote={quotes[item.symbol]}
+                      sparkData={sparklines[item.symbol] || []}
+                      dragIndex={dragIndex}
+                      dropTargetIndex={dropTargetIndex}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onDragEnd={handleDragEnd}
+                      onNavigate={handleItemClick}
+                      onRemove={handleRemoveWithToast}
+                      onOpenMenu={handleOpenMenu}
+                      fpSidebar={fpSidebar}
+                      flash={flashSymbols[item.symbol]}
+                      flashKey={flashKey}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           );
         })}

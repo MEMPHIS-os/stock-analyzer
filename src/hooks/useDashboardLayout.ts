@@ -3,12 +3,16 @@ import { useState, useCallback, useEffect } from 'react';
 export interface DashboardWidget {
   id: string;
   type:
+    | 'portfolio'
     | 'marketOverview'
     | 'topGainers'
     | 'topLosers'
     | 'watchlistTable'
+    | 'news'
+    | 'earnings'
     | 'marketIndices'
-    | 'sectorPerformance';
+    | 'sectorPerformance'
+    | 'miniHeatmap';
   visible: boolean;
   order: number;
 }
@@ -16,22 +20,30 @@ export interface DashboardWidget {
 const STORAGE_KEY = 'stockanalyzer_dashboard_layout';
 
 const WIDGET_LABELS: Record<DashboardWidget['type'], string> = {
+  portfolio: 'Portfolio',
   marketOverview: 'Marktübersicht',
   topGainers: 'Top Gewinner',
   topLosers: 'Top Verlierer',
   watchlistTable: 'Watchlist',
+  news: 'Markt-News',
+  earnings: 'Anstehende Earnings',
   marketIndices: 'Marktindizes',
   sectorPerformance: 'Sektor-Performance',
+  miniHeatmap: 'Sektor-Heatmap',
 };
 
 function defaultLayout(): DashboardWidget[] {
   const types: DashboardWidget['type'][] = [
+    'portfolio',
     'marketOverview',
     'topGainers',
     'topLosers',
     'watchlistTable',
+    'news',
+    'earnings',
     'marketIndices',
     'sectorPerformance',
+    'miniHeatmap',
   ];
   return types.map((type, i) => ({
     id: type,

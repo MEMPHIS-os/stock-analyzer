@@ -323,6 +323,57 @@
     @apply w-2 h-2 rounded-full bg-success;
     animation: pulseGlow 2s ease-in-out infinite;
   }
+
+  /* ─── Hero ambient aurora (accent-tinted radial glow behind hero cards) ─── */
+  .hero-ambient {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-ambient::after {
+    content: '';
+    position: absolute;
+    inset: -40%;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 45% 40% at 18% 0%, rgb(var(--accent-rgb) / 0.16), transparent 70%),
+      radial-gradient(ellipse 38% 45% at 85% 110%, rgba(124, 77, 255, 0.10), transparent 70%);
+    animation: auroraDrift 14s ease-in-out infinite alternate;
+  }
+
+  .hero-ambient > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─── Animated collapse (CSS grid 0fr/1fr trick — animates to auto height) ─── */
+  .collapse-grid {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .collapse-grid.collapsed {
+    grid-template-rows: 0fr;
+  }
+
+  .collapse-grid > .collapse-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* ─── Animated nav underline (active page indicator) ─── */
+  .nav-underline {
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 1px;
+    height: 2px;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    transform-origin: center;
+    animation: navUnderlineIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
 /* Hide TradingView branding from lightweight-charts */
@@ -437,6 +488,31 @@
     animation: flashRed 1s ease-out;
   }
 
+  /* ─── SVG chart draw-in: applied to a <clipPath> rect, reveals left→right.
+     (clip-based instead of stroke-dasharray — dasharray breaks under
+     vector-effect: non-scaling-stroke in Chromium) ─── */
+  .animate-draw-clip {
+    transform-origin: left center;
+    transform-box: fill-box;
+    animation: drawClip 0.9s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  /* Companion fade for chart areas/benchmarks: waits for the line to draw. */
+  .animate-fade-in-late {
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 0.45s forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-draw-clip {
+      animation-duration: 0.001ms !important;
+    }
+    .animate-fade-in-late {
+      animation-delay: 0ms !important;
+      animation-duration: 0.001ms !important;
+    }
+  }
+
   /* ─── Staggered children ─── */
   .stagger-children > * {
     animation: slideUp 0.3s ease-out both;
@@ -535,6 +611,21 @@
 @keyframes borderGlow {
   0%, 100% { border-color: rgb(var(--accent-rgb) / 0.2); }
   50% { border-color: rgb(var(--accent-rgb) / 0.5); }
+}
+
+@keyframes drawClip {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes auroraDrift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to { transform: translate3d(3%, 2%, 0) scale(1.06); }
+}
+
+@keyframes navUnderlineIn {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
 }
 
 /* ─── Split-Flap (Solari board) display ─── */

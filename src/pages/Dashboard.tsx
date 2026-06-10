@@ -15,10 +15,20 @@ import {
   PieChart,
   LayoutDashboard,
   Wallet,
+  Newspaper,
+  CalendarClock,
+  Grid3x3,
 } from 'lucide-react';
 import { useApp } from '../context';
-import { fetchQuotes, fetchSparklines, fetchScreener } from '../api';
-import type { ScreenerStock } from '../api';
+import {
+  fetchQuotes,
+  fetchSparklines,
+  fetchScreener,
+  fetchNews,
+  fetchCalendarEvents,
+  fetchHeatmap,
+} from '../api';
+import type { ScreenerStock, CalendarEvent, HeatmapStock } from '../api';
 import { formatPercent, formatChange } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -29,7 +39,8 @@ import { SkeletonCard, SkeletonTableRow } from '../components/Skeleton';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useDashboardLayout, getWidgetLabel } from '../hooks/useDashboardLayout';
 import type { DashboardWidget } from '../hooks/useDashboardLayout';
-import type { QuoteData } from '../types';
+import type { PortfolioHolding } from '../hooks/usePortfolio';
+import type { QuoteData, NewsItem } from '../types';
 
 // ─── Constants ───
 
@@ -66,6 +77,44 @@ const SECTOR_NAMES: Record<string, string> = {
   XLC: 'Comm. Services',
 };
 
+interface HoldingQuote {
+  price: number;
+  change: number;
+  changePercent: number;
+  currency: string;
+}
+
+type ConvertPriceFn = (value: number, currency: string) => { value: number; currency: string };
+
+// ─── Shared helpers (news time, relative time, heatmap colors) ───
+
+function newsTime(item: NewsItem): number {
+  const v = item.publishedAt;
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function timeAgo(ts: number, locale: 'de' | 'en'): string {
+  const mins = Math.max(1, Math.floor((Date.now() - ts) / 60_000));
+  if (mins < 60) return locale === 'de' ? `vor ${mins} Min.` : `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return locale === 'de' ? `vor ${hours} Std.` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return locale === 'de' ? `vor ${days} Tg.` : `${days}d ago`;
+}
+
+/** Same palette as the full heatmap page (see Heatmap.tsx). */
+function getHeatmapColor(pct: number): string {
+  const clamped = Math.max(-5, Math.min(5, pct));
+  if (clamped >= 0) {
+    const t = clamped / 5;
+    return `rgb(${Math.round(38 - t * 20)}, ${Math.round(100 + t * 66)}, ${Math.round(80 + t * 20)})`;
+  }
+  const t = -clamped / 5;
+  return `rgb(${Math.round(200 + t * 39)}, ${Math.round(70 - t * 35)}, ${Math.round(70 - t * 35)})`;
+}
+
 // ─── MiniSparkline ───
 
 function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }) {
@@ -94,16 +143,21 @@ function MiniSparkline({ data, positive }: { data: number[]; positive: boolean }
           <stop offset="0%" stopColor={color} stopOpacity="0.25" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
+        <clipPath id={`${id}-clip`}>
+          <rect x="0" y="0" width={w} height={h} className="animate-draw-clip" />
+        </clipPath>
       </defs>
-      <polygon points={areaPoints} fill={`url(#${id})`} />
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+      <g clipPath={`url(#${id}-clip)`}>
+        <polygon points={areaPoints} fill={`url(#${id})`} />
+        <polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </g>
     </svg>
   );
 }
@@ -443,10 +497,10 @@ function DashboardHero({
         : { text: 'text-accent', bg: 'bg-accent/10', ring: 'ring-accent/20' };
 
   return (
-    <div className="card-glow p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 animate-slide-up">
+    <div className="card-glow hero-ambient p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 animate-slide-up">
       {/* Greeting */}
       <div className="flex items-center gap-3.5 min-w-0">
-        <div className="hidden sm:flex p-2.5 rounded-2xl bg-accent/10 shrink-0">
+        <div className="hidden sm:flex p-2.5 rounded-2xl bg-accent/10 ring-1 ring-accent/20 shadow-glow-sm shrink-0">
           <LayoutDashboard className="w-6 h-6 text-accent" />
         </div>
         <div className="min-w-0">
@@ -529,7 +583,7 @@ export default function Dashboard() {
   const { widgets, toggleWidget, reorderWidgets, resetLayout } = useDashboardLayout();
   const { holdings, totalInvested } = usePortfolio();
   const [configOpen, setConfigOpen] = useState(false);
-  const [holdingQuotes, setHoldingQuotes] = useState<Record<string, { price: number; change: number; currency: string }>>({});
+  const [holdingQuotes, setHoldingQuotes] = useState<Record<string, HoldingQuote>>({});
 
   const [indices, setIndices] = useState<QuoteData[]>([]);
   const [watchlistQuotes, setWatchlistQuotes] = useState<QuoteData[]>([]);
@@ -622,9 +676,15 @@ export default function Dashboard() {
       try {
         const data = await fetchQuotes(holdingSymbols);
         if (!cancelled) {
-          const map: Record<string, { price: number; change: number; currency: string }> = {};
+          const map: Record<string, HoldingQuote> = {};
           for (const q of data) {
-            if (q?.symbol) map[q.symbol] = { price: q.regularMarketPrice, change: q.regularMarketChange ?? 0, currency: q.currency || 'USD' };
+            if (q?.symbol)
+              map[q.symbol] = {
+                price: q.regularMarketPrice,
+                change: q.regularMarketChange ?? 0,
+                changePercent: q.regularMarketChangePercent ?? 0,
+                currency: q.currency || 'USD',
+              };
           }
           setHoldingQuotes(map);
         }
@@ -665,6 +725,18 @@ export default function Dashboard() {
     return { totalValue, dayChange, dayChangePercent, totalPnl, totalPnlPercent, currency: mixed ? 'USD' : (ccy ?? 'USD') };
   }, [holdings, holdingQuotes, convertPrice]);
 
+  // ─── Symbol lists for the news / earnings widgets ───
+
+  const newsSymbols = useMemo(() => watchlist.slice(0, 8).map((w) => w.symbol), [watchlist]);
+
+  const earningsSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const w of watchlist) set.add(w.symbol);
+    for (const h of holdings) set.add(h.symbol);
+    // Indices (^GSPC etc.) never report earnings — skip them.
+    return [...set].filter((s) => !s.startsWith('^')).slice(0, 25);
+  }, [watchlist, holdings]);
+
   // ─── Render widget by type ───
 
   const renderWidget = useCallback(
@@ -672,6 +744,31 @@ export default function Dashboard() {
       if (!widget.visible) return null;
 
       switch (widget.type) {
+        case 'portfolio':
+          return (
+            <PortfolioWidget
+              key={widget.id}
+              holdings={holdings}
+              quotes={holdingQuotes}
+              snapshot={portfolioSnapshot}
+              navigate={navigate}
+              locale={locale}
+              t={t}
+              convertPrice={convertPrice}
+            />
+          );
+
+        case 'news':
+          return <NewsWidget key={widget.id} symbols={newsSymbols} navigate={navigate} locale={locale} t={t} />;
+
+        case 'earnings':
+          return (
+            <EarningsWidget key={widget.id} symbols={earningsSymbols} navigate={navigate} locale={locale} t={t} />
+          );
+
+        case 'miniHeatmap':
+          return <MiniHeatmapWidget key={widget.id} navigate={navigate} t={t} />;
+
         case 'marketOverview':
           return <MarketOverviewSection key={widget.id} indices={indices} sparklines={sparklines} navigate={navigate} locale={locale} t={t} />;
 
@@ -696,7 +793,23 @@ export default function Dashboard() {
           return null;
       }
     },
-    [indices, sparklines, watchlistQuotes, screenerStocks, majorIndicesQuotes, sectorQuotes, navigate, locale, t]
+    [
+      indices,
+      sparklines,
+      watchlistQuotes,
+      screenerStocks,
+      majorIndicesQuotes,
+      sectorQuotes,
+      holdings,
+      holdingQuotes,
+      portfolioSnapshot,
+      convertPrice,
+      newsSymbols,
+      earningsSymbols,
+      navigate,
+      locale,
+      t,
+    ]
   );
 
   if (loading) {
@@ -1116,6 +1229,527 @@ function WatchlistTableSection({
         </div>
       )}
       {contextMenu && <StockContextMenu {...contextMenu} onClose={closeContextMenu} />}
+    </div>
+  );
+}
+
+// ─── Portfolio Widget ───
+
+function PortfolioWidget({
+  holdings,
+  quotes,
+  snapshot,
+  navigate,
+  locale,
+  t,
+  convertPrice,
+}: {
+  holdings: PortfolioHolding[];
+  quotes: Record<string, HoldingQuote>;
+  snapshot: PortfolioSnapshot | null;
+  navigate: (path: string) => void;
+  locale: 'de' | 'en';
+  t: (key: string) => string;
+  convertPrice: ConvertPriceFn;
+}) {
+  const { fp } = usePrice();
+  const reactId = useId();
+  const [sparks, setSparks] = useState<Record<string, number[]>>({});
+  const symKey = holdings.map((h) => h.symbol).join(',');
+
+  useEffect(() => {
+    if (!symKey) {
+      setSparks({});
+      return;
+    }
+    let cancelled = false;
+    fetchSparklines(symKey.split(','))
+      .then((res) => {
+        if (!cancelled) setSparks(res);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [symKey]);
+
+  // Combined 5-day portfolio value series: each holding's sparkline is sampled
+  // onto a common 40-point timeline (index-fraction mapping), valued at
+  // shares × price and converted into the display currency.
+  const series = useMemo(() => {
+    if (!holdings.length || !Object.keys(sparks).length) return [] as number[];
+    const N = 40;
+    const out: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const f = i / (N - 1);
+      let v = 0;
+      for (const h of holdings) {
+        const s = sparks[h.symbol];
+        const q = quotes[h.symbol];
+        const px =
+          s && s.length >= 2 ? s[Math.round(f * (s.length - 1))] : (q?.price ?? h.avgPrice);
+        v += convertPrice(h.shares * px, q?.currency || 'USD').value;
+      }
+      out.push(v);
+    }
+    return out;
+  }, [sparks, holdings, quotes, convertPrice]);
+
+  const movers = useMemo(
+    () =>
+      holdings
+        .map((h) => ({ symbol: h.symbol, name: h.name, pct: quotes[h.symbol]?.changePercent }))
+        .filter((m): m is { symbol: string; name: string; pct: number } => m.pct != null)
+        .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+        .slice(0, 3),
+    [holdings, quotes]
+  );
+
+  const header = (
+    <div
+      className="flex items-center gap-2.5 mb-4 cursor-pointer group select-none"
+      onClick={() => navigate('/portfolio')}
+    >
+      <div className="p-1.5 rounded-lg bg-accent/10">
+        <Wallet className="w-5 h-5 text-accent" />
+      </div>
+      <h2 className="section-title group-hover:text-accent transition-colors">
+        {t('dashboard.portfolio')}
+      </h2>
+      <ArrowUpRight className="w-4 h-4 text-txt-secondary group-hover:text-accent ml-auto transition-colors" />
+    </div>
+  );
+
+  if (holdings.length === 0) {
+    return (
+      <div className="animate-slide-up">
+        {header}
+        <div className="card p-10 text-center text-txt-secondary">
+          <Wallet className="w-10 h-10 text-txt-muted/20 mx-auto mb-3" />
+          <p className="font-medium">{t('dashboard.portfolioEmpty')}</p>
+          <button onClick={() => navigate('/portfolio')} className="btn-primary mt-4 text-sm">
+            {t('dashboard.portfolioGoto')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const positive = series.length >= 2 ? series[series.length - 1] >= series[0] : true;
+  const color = positive ? '#26a69a' : '#ef5350';
+  const W = 600;
+  const H = 120;
+  let linePts = '';
+  let areaPts = '';
+  if (series.length >= 2) {
+    const min = Math.min(...series);
+    const max = Math.max(...series);
+    const range = max - min || 1;
+    linePts = series
+      .map((v, i) => {
+        const x = (i / (series.length - 1)) * W;
+        const y = 4 + (1 - (v - min) / range) * (H - 8);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+    areaPts = `0,${H} ${linePts} ${W},${H}`;
+  }
+
+  return (
+    <div className="animate-slide-up">
+      {header}
+      <div className="card overflow-hidden">
+        {/* Stat chips */}
+        {snapshot && (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 pt-4">
+            <div>
+              <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+                {t('dashboard.totalValueShort')}
+              </div>
+              <div className="text-lg font-bold font-mono text-txt-primary">
+                <Price value={snapshot.totalValue} currency={snapshot.currency} size={16} />
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+                {t('dashboard.todayShort')}
+              </div>
+              <div
+                className={`text-sm font-mono font-semibold ${snapshot.dayChange >= 0 ? 'text-success' : 'text-danger'}`}
+              >
+                {snapshot.dayChange >= 0 ? '+' : ''}
+                {fp(snapshot.dayChange, snapshot.currency)} ({formatPercent(snapshot.dayChangePercent)})
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
+                {t('dashboard.totalPnlShort')}
+              </div>
+              <div
+                className={`text-sm font-mono font-semibold ${snapshot.totalPnl >= 0 ? 'text-success' : 'text-danger'}`}
+              >
+                {snapshot.totalPnl >= 0 ? '+' : ''}
+                {fp(snapshot.totalPnl, snapshot.currency)} ({formatPercent(snapshot.totalPnlPercent)})
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-[1fr,240px] gap-4 p-5">
+          {/* 5d value trend */}
+          <div
+            className="min-w-0 cursor-pointer"
+            onClick={() => navigate('/portfolio')}
+            title={t('dashboard.trend5d')}
+          >
+            <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1.5">
+              {t('dashboard.trend5d')}
+            </div>
+            {series.length >= 2 ? (
+              <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-24">
+                <defs>
+                  <linearGradient id={`pfw-fill-${reactId}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+                  </linearGradient>
+                  <clipPath id={`pfw-clip-${reactId}`}>
+                    <rect key={symKey} x="0" y="0" width={W} height={H} className="animate-draw-clip" />
+                  </clipPath>
+                </defs>
+                <g clipPath={`url(#pfw-clip-${reactId})`}>
+                  <polygon points={areaPts} fill={`url(#pfw-fill-${reactId})`} />
+                  <polyline
+                    points={linePts}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              </svg>
+            ) : (
+              <div className="h-24 rounded-xl skeleton-shimmer" />
+            )}
+          </div>
+
+          {/* Top movers */}
+          <div className="min-w-0">
+            <div className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold mb-1.5">
+              {t('dashboard.topMovers')}
+            </div>
+            <div className="space-y-1">
+              {movers.map((m) => (
+                <div
+                  key={m.symbol}
+                  className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg hover:bg-dark-600/30 cursor-pointer transition-colors"
+                  onClick={() => navigate(`/stock/${m.symbol}`)}
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono font-bold text-xs text-accent">{m.symbol}</span>
+                    <div className="text-[10px] text-txt-secondary truncate max-w-[120px]">{m.name}</div>
+                  </div>
+                  <span className={`shrink-0 ${m.pct >= 0 ? 'badge-success' : 'badge-danger'} text-[11px]`}>
+                    {formatPercent(m.pct)}
+                  </span>
+                </div>
+              ))}
+              {movers.length === 0 && (
+                <div className="text-xs text-txt-muted px-2.5 py-1.5">…</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── News Widget ───
+
+function NewsWidget({
+  symbols,
+  navigate,
+  locale,
+  t,
+}: {
+  symbols: string[];
+  navigate: (path: string) => void;
+  locale: 'de' | 'en';
+  t: (key: string) => string;
+}) {
+  const [items, setItems] = useState<NewsItem[] | null>(null);
+  const symKey = symbols.join(',');
+
+  useEffect(() => {
+    if (!symKey) {
+      setItems([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(symKey.split(',').map((s) => fetchNews(s).catch(() => [] as NewsItem[]))).then(
+      (results) => {
+        if (cancelled) return;
+        // Dedupe by link/title, keep newest first (same approach as the News page).
+        const seen = new Map<string, NewsItem>();
+        for (const item of results.flat()) {
+          const key = (item.link || item.title || '').toLowerCase();
+          if (!key) continue;
+          const existing = seen.get(key);
+          if (!existing || newsTime(item) > newsTime(existing)) seen.set(key, item);
+        }
+        setItems([...seen.values()].sort((a, b) => newsTime(b) - newsTime(a)).slice(0, 5));
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [symKey]);
+
+  return (
+    <div className="animate-slide-up">
+      <div
+        className="flex items-center gap-2.5 mb-4 cursor-pointer group select-none"
+        onClick={() => navigate('/news')}
+      >
+        <div className="p-1.5 rounded-lg bg-accent/10">
+          <Newspaper className="w-5 h-5 text-accent" />
+        </div>
+        <h2 className="section-title group-hover:text-accent transition-colors">{t('dashboard.news')}</h2>
+        <ArrowUpRight className="w-4 h-4 text-txt-secondary group-hover:text-accent ml-auto transition-colors" />
+      </div>
+      <div className="card overflow-hidden">
+        {items === null ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-12 rounded-lg skeleton-shimmer" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-sm text-txt-secondary">{t('dashboard.noNews')}</div>
+        ) : (
+          items.map((item, i) => (
+            <a
+              key={`${item.link}-${i}`}
+              href={item.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-5 py-3 border-b border-border/5 last:border-0 hover:bg-dark-600/20 transition-all duration-200 group"
+            >
+              {item.thumbnail && (
+                <img
+                  src={item.thumbnail}
+                  alt=""
+                  className="w-14 h-10 object-cover rounded-lg shrink-0 bg-dark-600"
+                  loading="lazy"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-txt-primary line-clamp-2 leading-snug group-hover:text-accent transition-colors">
+                  {item.title}
+                </div>
+                <div className="text-[11px] text-txt-muted mt-0.5 truncate">
+                  {item.publisher}
+                  <span className="mx-1.5">·</span>
+                  {timeAgo(newsTime(item), locale)}
+                </div>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-txt-muted group-hover:text-accent shrink-0 transition-colors" />
+            </a>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Earnings Widget ───
+
+function EarningsWidget({
+  symbols,
+  navigate,
+  locale,
+  t,
+}: {
+  symbols: string[];
+  navigate: (path: string) => void;
+  locale: 'de' | 'en';
+  t: (key: string) => string;
+}) {
+  const [events, setEvents] = useState<CalendarEvent[] | null>(null);
+  const symKey = symbols.join(',');
+
+  useEffect(() => {
+    if (!symKey) {
+      setEvents([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCalendarEvents(symKey.split(','))
+      .then((res) => {
+        if (cancelled) return;
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const upcoming = res
+          .filter((e) => e.earningsDate != null && e.earningsDate * 1000 >= todayStart.getTime())
+          .sort((a, b) => (a.earningsDate as number) - (b.earningsDate as number))
+          .slice(0, 5);
+        setEvents(upcoming);
+      })
+      .catch(() => {
+        if (!cancelled) setEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symKey]);
+
+  const loc = locale === 'de' ? 'de-DE' : 'en-US';
+  const todayMid = new Date();
+  todayMid.setHours(0, 0, 0, 0);
+
+  const daysLabel = (ts: number) => {
+    const d = new Date(ts * 1000);
+    d.setHours(0, 0, 0, 0);
+    const days = Math.round((d.getTime() - todayMid.getTime()) / 86_400_000);
+    if (days <= 0) return t('dashboard.earningsToday');
+    if (days === 1) return t('dashboard.earningsTomorrow');
+    return t('dashboard.earningsInDays').replace('{n}', String(days));
+  };
+
+  return (
+    <div className="animate-slide-up">
+      <div
+        className="flex items-center gap-2.5 mb-4 cursor-pointer group select-none"
+        onClick={() => navigate('/upcoming')}
+      >
+        <div className="p-1.5 rounded-lg bg-accent/10">
+          <CalendarClock className="w-5 h-5 text-accent" />
+        </div>
+        <h2 className="section-title group-hover:text-accent transition-colors">
+          {t('dashboard.earnings')}
+        </h2>
+        <ArrowUpRight className="w-4 h-4 text-txt-secondary group-hover:text-accent ml-auto transition-colors" />
+      </div>
+      <div className="card overflow-hidden">
+        {events === null ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-10 rounded-lg skeleton-shimmer" />
+            ))}
+          </div>
+        ) : events.length === 0 ? (
+          <div className="p-8 text-center text-sm text-txt-secondary">{t('dashboard.noEarnings')}</div>
+        ) : (
+          events.map((e) => (
+            <div
+              key={e.symbol}
+              className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border/5 last:border-0 hover:bg-dark-600/20 cursor-pointer transition-all duration-200"
+              onClick={() => navigate(`/stock/${e.symbol}`)}
+            >
+              <div className="min-w-0">
+                <span className="font-mono font-bold text-sm text-accent">{e.symbol}</span>
+                <div className="text-[11px] text-txt-secondary truncate max-w-[180px]">{e.name}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-semibold text-txt-primary">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-accent/10 text-accent mr-2">
+                    {daysLabel(e.earningsDate as number)}
+                  </span>
+                  {new Date((e.earningsDate as number) * 1000).toLocaleDateString(loc, {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: 'short',
+                  })}
+                </div>
+                {e.earningsEstimate != null && (
+                  <div className="text-[11px] text-txt-muted font-mono mt-0.5">
+                    {t('dashboard.earningsEst')}: {e.earningsEstimate.toFixed(2)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mini Heatmap Widget ───
+
+function MiniHeatmapWidget({ navigate, t }: { navigate: (path: string) => void; t: (key: string) => string }) {
+  const [sectors, setSectors] = useState<{ sector: string; pct: number; cap: number }[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHeatmap()
+      .then((data) => {
+        if (cancelled) return;
+        const agg = Object.entries(data)
+          .map(([sector, stocks]) => {
+            let cap = 0;
+            let wsum = 0;
+            for (const s of stocks as HeatmapStock[]) {
+              const c = s.marketCap || 0;
+              cap += c;
+              wsum += c * (s.changePercent || 0);
+            }
+            return { sector, cap, pct: cap > 0 ? wsum / cap : 0 };
+          })
+          .filter((s) => s.cap > 0)
+          .sort((a, b) => b.cap - a.cap);
+        setSectors(agg);
+      })
+      .catch(() => {
+        if (!cancelled) setSectors([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (sectors !== null && sectors.length === 0) return null;
+
+  return (
+    <div className="animate-slide-up">
+      <div
+        className="flex items-center gap-2.5 mb-4 cursor-pointer group select-none"
+        onClick={() => navigate('/heatmap')}
+      >
+        <div className="p-1.5 rounded-lg bg-accent/10">
+          <Grid3x3 className="w-5 h-5 text-accent" />
+        </div>
+        <h2 className="section-title group-hover:text-accent transition-colors">
+          {t('dashboard.miniHeatmap')}
+        </h2>
+        <ArrowUpRight className="w-4 h-4 text-txt-secondary group-hover:text-accent ml-auto transition-colors" />
+      </div>
+      {sectors === null ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-16 rounded-xl skeleton-shimmer" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 stagger-children">
+          {sectors.map((s) => (
+            <div
+              key={s.sector}
+              className="h-16 rounded-xl p-2.5 flex flex-col justify-between cursor-pointer transition-transform duration-200 hover:scale-[1.03] hover:shadow-lg"
+              style={{ background: getHeatmapColor(s.pct) }}
+              onClick={() => navigate('/heatmap')}
+              title={s.sector}
+            >
+              <div className="text-[11px] font-semibold text-white/85 truncate leading-tight">
+                {s.sector}
+              </div>
+              <div className="text-sm font-mono font-bold text-white">{formatPercent(s.pct)}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

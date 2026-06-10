@@ -186,6 +186,9 @@ function ValueChart({
   const area = `${PAD},${H - PAD} ${line} ${W - PAD},${H - PAD}`;
   const color = positive ? '#26a69a' : '#ef5350';
   const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => PAD + f * (H - 2 * PAD));
+  // Re-trigger the draw-in animation whenever the underlying data changes
+  // (range/benchmark switch) — keying the animated nodes remounts them.
+  const drawKey = `${series.length}-${series[0]}-${series[series.length - 1]}-${positive}`;
 
   const onMove = (e: React.MouseEvent) => {
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -210,9 +213,17 @@ function ValueChart({
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-44">
         <defs>
           <linearGradient id="pf-value-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+            <stop offset="45%" stopColor={color} stopOpacity="0.12" />
             <stop offset="100%" stopColor={color} stopOpacity="0.01" />
           </linearGradient>
+          <filter id="pf-line-glow" x="-20%" y="-50%" width="140%" height="200%">
+            <feGaussianBlur stdDeviation="4" />
+          </filter>
+          <clipPath id="pf-draw-clip">
+            {/* Left-to-right reveal; keyed so range/benchmark switches re-run it */}
+            <rect key={`clip-${drawKey}`} x="0" y="0" width={W} height={H} className="animate-draw-clip" />
+          </clipPath>
         </defs>
         {grid.map((y, i) => (
           <line
@@ -227,9 +238,10 @@ function ValueChart({
             vectorEffect="non-scaling-stroke"
           />
         ))}
-        <polygon points={area} fill="url(#pf-value-fill)" />
+        <polygon key={`area-${drawKey}`} points={area} fill="url(#pf-value-fill)" className="animate-fade-in-late" />
         {hasBench && (
           <polyline
+            key={`bench-${drawKey}`}
             points={toLine(benchmark as number[])}
             fill="none"
             stroke="#94a3b8"
@@ -239,17 +251,31 @@ function ValueChart({
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
             opacity="0.85"
+            className="animate-fade-in-late"
           />
         )}
-        <polyline
-          points={line}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-        />
+        <g clipPath="url(#pf-draw-clip)">
+          {/* Soft glow underlay — same path, blurred & translucent */}
+          <polyline
+            points={line}
+            fill="none"
+            stroke={color}
+            strokeOpacity="0.45"
+            strokeWidth="6"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            filter="url(#pf-line-glow)"
+          />
+          <polyline
+            points={line}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
         {hi != null && (
           <line
             x1={xOf(hi, series.length)}
