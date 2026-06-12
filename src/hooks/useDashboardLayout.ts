@@ -7,7 +7,6 @@ export interface DashboardWidget {
     | 'topGainers'
     | 'topLosers'
     | 'watchlistTable'
-    | 'marketIndices'
     | 'sectorPerformance';
   visible: boolean;
   order: number;
@@ -20,7 +19,6 @@ const WIDGET_LABELS: Record<DashboardWidget['type'], string> = {
   topGainers: 'Top Gewinner',
   topLosers: 'Top Verlierer',
   watchlistTable: 'Watchlist',
-  marketIndices: 'Marktindizes',
   sectorPerformance: 'Sektor-Performance',
 };
 
@@ -30,7 +28,6 @@ function defaultLayout(): DashboardWidget[] {
     'topGainers',
     'topLosers',
     'watchlistTable',
-    'marketIndices',
     'sectorPerformance',
   ];
   return types.map((type, i) => ({
