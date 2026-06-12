@@ -11,7 +11,6 @@ import {
   X,
   RotateCcw,
   GripVertical,
-  LineChart,
   PieChart,
   LayoutDashboard,
   Wallet,
@@ -44,7 +43,7 @@ import type { QuoteData, NewsItem } from '../types';
 
 // ─── Constants ───
 
-const MARKET_OVERVIEW_INDICES = ['^GSPC', '^IXIC', '^DJI', '^GDAXI', '^FTSE'];
+const MARKET_OVERVIEW_INDICES = ['^GSPC', '^IXIC', '^DJI', '^RUT', '^GDAXI', '^FTSE'];
 const INDEX_NAMES: Record<string, string> = {
   '^GSPC': 'S&P 500',
   '^IXIC': 'NASDAQ',
@@ -54,12 +53,17 @@ const INDEX_NAMES: Record<string, string> = {
   '^RUT': 'Russell 2000',
 };
 
-const MAJOR_INDICES = ['^DJI', '^GSPC', '^IXIC', '^RUT'];
-const MAJOR_INDEX_NAMES: Record<string, string> = {
-  '^DJI': 'Dow Jones',
-  '^GSPC': 'S&P 500',
-  '^IXIC': 'NASDAQ',
-  '^RUT': 'Russell 2000',
+// Grid placement per widget type: narrow widgets share a row on large screens.
+const WIDGET_SPANS: Record<DashboardWidget['type'], string> = {
+  portfolio: 'lg:col-span-12',
+  marketOverview: 'lg:col-span-12',
+  topGainers: 'lg:col-span-6',
+  topLosers: 'lg:col-span-6',
+  watchlistTable: 'lg:col-span-8',
+  sectorPerformance: 'lg:col-span-4',
+  news: 'lg:col-span-6',
+  earnings: 'lg:col-span-6',
+  miniHeatmap: 'lg:col-span-12',
 };
 
 const SECTOR_ETFS = ['XLK', 'XLF', 'XLV', 'XLE', 'XLY', 'XLP', 'XLI', 'XLB', 'XLRE', 'XLU', 'XLC'];
@@ -312,56 +316,6 @@ function ConfigPanel({ widgets, onToggle, onReorder, onReset, onClose }: ConfigP
   );
 }
 
-// ─── Market Indices Widget ───
-
-function MarketIndicesWidget({ quotes, navigate, locale }: { quotes: QuoteData[]; navigate: (path: string) => void; locale: 'de' | 'en' }) {
-  const { fp } = usePrice();
-  const filtered = quotes.filter((q) => MAJOR_INDICES.includes(q.symbol));
-  if (filtered.length === 0) return null;
-
-  return (
-    <div className="animate-slide-up">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="p-1.5 rounded-lg bg-accent/10">
-          <LineChart className="w-5 h-5 text-accent" />
-        </div>
-        <h2 className="section-title">Marktindizes</h2>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 stagger-children">
-        {filtered.map((idx) => {
-          const isPositive = idx.regularMarketChange >= 0;
-          return (
-            <div
-              key={idx.symbol}
-              className="card p-4 cursor-pointer group"
-              onClick={() => navigate(`/stock/${idx.symbol}`)}
-            >
-              <div className="text-xs text-txt-secondary mb-1 font-medium">
-                {MAJOR_INDEX_NAMES[idx.symbol] || idx.shortName || idx.symbol}
-              </div>
-              <div className="text-lg font-bold font-mono text-txt-primary">
-                <Price value={idx.regularMarketPrice} currency={idx.currency} size={16} />
-              </div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg ${isPositive ? 'bg-success/10' : 'bg-danger/10'}`}>
-                  {isPositive ? (
-                    <ArrowUpRight className="w-3.5 h-3.5 text-success" />
-                  ) : (
-                    <ArrowDownRight className="w-3.5 h-3.5 text-danger" />
-                  )}
-                  <span className={`text-sm font-mono font-semibold ${isPositive ? 'text-success' : 'text-danger'}`}>
-                    {formatPercent(idx.regularMarketChangePercent)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Sector Performance Widget ───
 
 function SectorPerformanceWidget({ quotes }: { quotes: QuoteData[] }) {
@@ -588,12 +542,10 @@ export default function Dashboard() {
   const [indices, setIndices] = useState<QuoteData[]>([]);
   const [watchlistQuotes, setWatchlistQuotes] = useState<QuoteData[]>([]);
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({});
-  const [majorIndicesQuotes, setMajorIndicesQuotes] = useState<QuoteData[]>([]);
   const [sectorQuotes, setSectorQuotes] = useState<QuoteData[]>([]);
   const [screenerStocks, setScreenerStocks] = useState<ScreenerStock[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const needsMajorIndices = widgets.some((w) => w.type === 'marketIndices' && w.visible);
   const needsSectors = widgets.some((w) => w.type === 'sectorPerformance' && w.visible);
   const needsGainersLosers = widgets.some(
     (w) => (w.type === 'topGainers' || w.type === 'topLosers') && w.visible
@@ -604,27 +556,11 @@ export default function Dashboard() {
 
     async function load() {
       try {
-        const extraSymbols: string[] = [];
-        if (needsMajorIndices) {
-          for (const sym of MAJOR_INDICES) {
-            if (!MARKET_OVERVIEW_INDICES.includes(sym) && !extraSymbols.includes(sym)) {
-              extraSymbols.push(sym);
-            }
-          }
-        }
-        if (needsSectors) {
-          for (const sym of SECTOR_ETFS) {
-            if (!extraSymbols.includes(sym)) {
-              extraSymbols.push(sym);
-            }
-          }
-        }
-
         const [idxData, wlData, sparks, ...extraResults] = await Promise.all([
           fetchQuotes(MARKET_OVERVIEW_INDICES),
           fetchQuotes(watchlist.map((w) => w.symbol)),
           fetchSparklines([...MARKET_OVERVIEW_INDICES, ...watchlist.map((w) => w.symbol)]),
-          ...(extraSymbols.length > 0 ? [fetchQuotes(extraSymbols)] : []),
+          ...(needsSectors ? [fetchQuotes(SECTOR_ETFS)] : []),
           ...(needsGainersLosers ? [fetchScreener()] : []),
         ]);
 
@@ -634,13 +570,8 @@ export default function Dashboard() {
           setSparklines(sparks);
 
           let resultIdx = 0;
-          const extraQuotes: QuoteData[] = extraSymbols.length > 0 ? (extraResults[resultIdx++] as QuoteData[] || []) : [];
+          const extraQuotes: QuoteData[] = needsSectors ? (extraResults[resultIdx++] as QuoteData[] || []) : [];
           const screenerData: ScreenerStock[] = needsGainersLosers ? (extraResults[resultIdx] as ScreenerStock[] || []) : [];
-
-          if (needsMajorIndices) {
-            const allQuotes = [...idxData, ...extraQuotes];
-            setMajorIndicesQuotes(allQuotes.filter((q) => MAJOR_INDICES.includes(q.symbol)));
-          }
 
           if (needsSectors) {
             setSectorQuotes(extraQuotes.filter((q) => SECTOR_ETFS.includes(q.symbol)));
@@ -660,7 +591,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [watchlist, needsMajorIndices, needsSectors, needsGainersLosers]);
+  }, [watchlist, needsSectors, needsGainersLosers]);
 
   // ─── Portfolio snapshot (hero) ───
 
@@ -783,9 +714,6 @@ export default function Dashboard() {
             <WatchlistTableSection key={widget.id} watchlistQuotes={watchlistQuotes} sparklines={sparklines} navigate={navigate} locale={locale} t={t} />
           );
 
-        case 'marketIndices':
-          return <MarketIndicesWidget key={widget.id} quotes={majorIndicesQuotes} navigate={navigate} locale={locale} />;
-
         case 'sectorPerformance':
           return <SectorPerformanceWidget key={widget.id} quotes={sectorQuotes} />;
 
@@ -798,7 +726,6 @@ export default function Dashboard() {
       sparklines,
       watchlistQuotes,
       screenerStocks,
-      majorIndicesQuotes,
       sectorQuotes,
       holdings,
       holdingQuotes,
@@ -812,12 +739,31 @@ export default function Dashboard() {
     ]
   );
 
+  // Skip a widget's grid cell when we already know it renders nothing, so its
+  // half-row partner can't end up next to an empty gap. Widgets that fetch
+  // their own data (news, earnings, heatmap) render skeletons/empty states
+  // and keep their cell.
+  const widgetHasContent = (widget: DashboardWidget): boolean => {
+    switch (widget.type) {
+      case 'marketOverview':
+        return indices.length > 0;
+      case 'topGainers':
+        return screenerStocks.some((s) => s.changePercent > 0);
+      case 'topLosers':
+        return screenerStocks.some((s) => s.changePercent < 0);
+      case 'sectorPerformance':
+        return sectorQuotes.length > 0;
+      default:
+        return true;
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="h-20 rounded-2xl skeleton-shimmer" />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
@@ -835,7 +781,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* Hero header */}
       <DashboardHero
         indices={indices}
@@ -858,8 +804,17 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Widgets in configured order */}
-      {widgets.map((widget) => renderWidget(widget))}
+      {/* Widgets in configured order — narrow widgets pair up on large screens */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {widgets.map((widget) => {
+          if (!widget.visible || !widgetHasContent(widget)) return null;
+          return (
+            <div key={widget.id} className={`min-w-0 ${WIDGET_SPANS[widget.type]}`}>
+              {renderWidget(widget)}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -889,7 +844,7 @@ function MarketOverviewSection({
         <h2 className="section-title">{t('dashboard.marketOverview')}</h2>
         <div className="ml-2 live-dot" title="Live" />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 stagger-children">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 stagger-children">
         {indices.map((idx) => {
           const isPositive = idx.regularMarketChange >= 0;
           const sparkData = sparklines[idx.symbol] || [];

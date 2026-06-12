@@ -10,7 +10,6 @@ export interface DashboardWidget {
     | 'watchlistTable'
     | 'news'
     | 'earnings'
-    | 'marketIndices'
     | 'sectorPerformance'
     | 'miniHeatmap';
   visible: boolean;
@@ -27,22 +26,22 @@ const WIDGET_LABELS: Record<DashboardWidget['type'], string> = {
   watchlistTable: 'Watchlist',
   news: 'Markt-News',
   earnings: 'Anstehende Earnings',
-  marketIndices: 'Marktindizes',
   sectorPerformance: 'Sektor-Performance',
   miniHeatmap: 'Sektor-Heatmap',
 };
 
 function defaultLayout(): DashboardWidget[] {
+  // Order matters for the dashboard grid: half-width pairs (gainers/losers,
+  // watchlist/sectors, news/earnings) sit next to each other by default.
   const types: DashboardWidget['type'][] = [
     'portfolio',
     'marketOverview',
     'topGainers',
     'topLosers',
     'watchlistTable',
+    'sectorPerformance',
     'news',
     'earnings',
-    'marketIndices',
-    'sectorPerformance',
     'miniHeatmap',
   ];
   return types.map((type, i) => ({
