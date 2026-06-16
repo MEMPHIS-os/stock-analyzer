@@ -91,9 +91,33 @@ function getTimezoneAbbr(timezone: string, locale: 'de' | 'en' = 'en'): string {
 
 const DE_TIMEZONE = 'Europe/Berlin';
 
+/**
+ * Trading session a market is in, derived from Yahoo's `marketState`.
+ * Crucially `PRE`/`POST` are NOT the regular session — at 00:00 Berlin time the
+ * US market is in `POST` (after-hours, 16:00–20:00 ET), so it must not be shown
+ * as "open" with a "closes 22:00" label (the regular session already ended).
+ */
+type MarketStatus = 'open' | 'pre' | 'post' | 'closed';
+
+function getMarketStatus(marketState?: string): MarketStatus {
+  switch (marketState) {
+    case 'REGULAR':
+      return 'open';
+    case 'PRE':
+    case 'PREPRE':
+      return 'pre';
+    case 'POST':
+    case 'POSTPOST':
+      return 'post';
+    default:
+      // CLOSED, undefined, or anything unexpected → treat as closed.
+      return 'closed';
+  }
+}
+
 function getMarketTimeLabel(
   symbol: string,
-  isOpen: boolean,
+  status: MarketStatus,
   locale: 'de' | 'en'
 ): string | null {
   const hours = MARKET_HOURS[symbol];
@@ -103,13 +127,20 @@ function getMarketTimeLabel(
   const displayTZ = isDe ? DE_TIMEZONE : hours.timezone;
   const tzLabel = getTimezoneAbbr(displayTZ, locale);
 
-  const h = isOpen ? hours.closeHour : hours.openHour;
-  const m = isOpen ? hours.closeMinute : hours.openMinute;
+  // Pre-/after-hours: the regular session isn't running, so show the session
+  // name rather than a misleading open/close time.
+  if (status === 'pre') return isDe ? 'Vorbörslich' : 'Pre-market';
+  if (status === 'post') return isDe ? 'Nachbörslich' : 'After-hours';
+
+  // Open → next event is the close; closed → next event is the open.
+  const open = status === 'open';
+  const h = open ? hours.closeHour : hours.openHour;
+  const m = open ? hours.closeMinute : hours.openMinute;
   const time = isDe
     ? convertTimeTo(h, m, hours.timezone, DE_TIMEZONE)
     : formatTime(h, m);
 
-  const label = isOpen
+  const label = open
     ? (isDe ? 'Schließt' : 'Closes')
     : (isDe ? 'Öffnet' : 'Opens');
 
@@ -261,10 +292,9 @@ export default function GlobalMarkets() {
               {indices.map((idx) => {
                 const isPositive = idx.change >= 0;
                 const sparkData = sparklines[idx.symbol] || [];
-                const isOpen =
-                  idx.marketState === 'REGULAR' ||
-                  idx.marketState === 'PRE' ||
-                  idx.marketState === 'POST';
+                const status = getMarketStatus(idx.marketState);
+                const isOpen = status === 'open';
+                const isExtended = status === 'pre' || status === 'post';
 
                 return (
                   <div
@@ -280,12 +310,20 @@ export default function GlobalMarkets() {
                         {idx.marketState && (
                           <span
                             className={`w-2 h-2 rounded-full shrink-0 ${
-                              isOpen ? 'bg-success animate-pulse' : 'bg-txt-muted'
+                              isOpen
+                                ? 'bg-success animate-pulse'
+                                : isExtended
+                                  ? 'bg-warning animate-pulse'
+                                  : 'bg-txt-muted'
                             }`}
                             title={
-                              isOpen
+                              status === 'open'
                                 ? t('globalMarkets.open')
-                                : t('globalMarkets.closed')
+                                : status === 'pre'
+                                  ? t('globalMarkets.preMarket')
+                                  : status === 'post'
+                                    ? t('globalMarkets.afterHours')
+                                    : t('globalMarkets.closed')
                             }
                           />
                         )}
@@ -327,11 +365,11 @@ export default function GlobalMarkets() {
                         <span className="text-[11px] text-txt-muted">{idx.exchange}</span>
                       )}
                       {(() => {
-                        const timeLabel = getMarketTimeLabel(idx.symbol, isOpen, locale);
+                        const timeLabel = getMarketTimeLabel(idx.symbol, status, locale);
                         if (!timeLabel) return null;
                         return (
                           <span className={`text-[11px] flex items-center gap-1 ${
-                            isOpen ? 'text-success/80' : 'text-txt-muted'
+                            isOpen ? 'text-success/80' : isExtended ? 'text-warning/80' : 'text-txt-muted'
                           }`}>
                             <Clock className="w-3 h-3" />
                             {timeLabel}

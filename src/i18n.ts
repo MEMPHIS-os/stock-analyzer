@@ -229,6 +229,8 @@ const de: Translations = {
   'globalMarkets.latinAmerica': 'Lateinamerika',
   'globalMarkets.open': 'Geöffnet',
   'globalMarkets.closed': 'Geschlossen',
+  'globalMarkets.preMarket': 'Vorbörslich',
+  'globalMarkets.afterHours': 'Nachbörslich',
 
   // Backtesting
   'nav.backtesting': 'Backtesting',
@@ -532,6 +534,8 @@ const en: Translations = {
   'globalMarkets.latinAmerica': 'Latin America',
   'globalMarkets.open': 'Open',
   'globalMarkets.closed': 'Closed',
+  'globalMarkets.preMarket': 'Pre-market',
+  'globalMarkets.afterHours': 'After-hours',
 
   // Backtesting
   'nav.backtesting': 'Backtesting',
