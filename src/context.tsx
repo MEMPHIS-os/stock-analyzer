@@ -12,6 +12,7 @@ const LOCALE_KEY = 'stockanalyzer_locale';
 const DISPLAY_CURRENCY_KEY = 'stockanalyzer_displaycurrency';
 const SPLIT_FLAP_KEY = 'stockanalyzer_splitflap';
 const ACCENT_KEY = 'stockanalyzer_accent';
+const GLASS_KEY = 'stockanalyzer_glass';
 
 export type AccentColor = 'blue' | 'green' | 'violet' | 'amber' | 'rose' | 'cyan' | 'teal';
 
@@ -43,6 +44,8 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
 
 export type Theme = 'dark' | 'light';
 export type DisplayCurrency = 'native' | 'EUR';
+/** Window transparency / frosted-glass level. 'off' = normal (fully opaque). */
+export type GlassLevel = 'off' | 'low' | 'medium' | 'high';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 export interface Toast {
@@ -108,6 +111,9 @@ interface AppState {
   // Accent color theme
   accent: AccentColor;
   setAccent: (accent: AccentColor) => void;
+  // Window transparency / frosted-glass level (Windows acrylic)
+  glassLevel: GlassLevel;
+  setGlassLevel: (level: GlassLevel) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -160,6 +166,16 @@ function loadAccent(): AccentColor {
   return 'blue';
 }
 
+function loadGlassLevel(): GlassLevel {
+  try {
+    const stored = localStorage.getItem(GLASS_KEY);
+    if (stored === 'off' || stored === 'low' || stored === 'medium' || stored === 'high') {
+      return stored;
+    }
+  } catch {}
+  return 'off'; // Default: normal, fully opaque window.
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(loadWatchlist);
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
@@ -174,6 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [splitFlapEnabled, setSplitFlapEnabled] = useState<boolean>(loadSplitFlap);
   const [accent, setAccentState] = useState<AccentColor>(loadAccent);
+  const [glassLevel, setGlassLevelState] = useState<GlassLevel>(loadGlassLevel);
 
   // Use alerts hook
   const {
@@ -212,6 +229,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [accent]);
 
   const setAccent = useCallback((next: AccentColor) => setAccentState(next), []);
+
+  // Apply the transparency level to the DOM. The renderer-only `acrylic` class
+  // (set in main.tsx for the Windows Electron shell) gates whether index.css
+  // actually turns anything translucent; here we just record the chosen level.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-glass', glassLevel);
+    localStorage.setItem(GLASS_KEY, glassLevel);
+  }, [glassLevel]);
+
+  const setGlassLevel = useCallback((next: GlassLevel) => setGlassLevelState(next), []);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -408,6 +435,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleSplitFlap,
         accent,
         setAccent,
+        glassLevel,
+        setGlassLevel,
       }}
     >
       {children}

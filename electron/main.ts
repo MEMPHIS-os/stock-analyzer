@@ -82,7 +82,13 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'StockAnalyzer',
-    backgroundColor: '#0f1117',
+    // Transparent base + Windows 11 acrylic backdrop → the window gets a
+    // frosted-glass look (blurred, see-through desktop behind it). The renderer
+    // layers a translucent shell on top (see `html.acrylic` in index.css).
+    // IMPORTANT: never call setOpacity() on this window — a layered window
+    // disables the DWM acrylic material, so the intro fade lives in CSS instead.
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -98,20 +104,19 @@ async function createWindow() {
     if (shown || !mainWindow) return;
     shown = true;
 
-    // Fade the main window in from transparent for a smooth hand-off.
-    mainWindow.setOpacity(0);
+    // Show at full opacity — do NOT fade the window via setOpacity(): a layered
+    // window suppresses the Windows 11 acrylic backdrop. The intro fade now
+    // lives in CSS (html.acrylic #root). Re-assert the material once on show as
+    // belt-and-suspenders (cheap no-op if it's already applied).
     mainWindow.show();
     mainWindow.focus();
+    if (process.platform === 'win32') {
+      try {
+        mainWindow.setBackgroundMaterial('acrylic');
+      } catch {}
+    }
 
-    let mainOp = 0;
-    const fadeIn = setInterval(() => {
-      mainOp = Math.min(1, mainOp + 0.12);
-      if (!mainWindow || mainWindow.isDestroyed()) return clearInterval(fadeIn);
-      mainWindow.setOpacity(mainOp);
-      if (mainOp >= 1) clearInterval(fadeIn);
-    }, 16);
-
-    // Simultaneously fade the splash out, then close it.
+    // Cross-fade the (opaque, non-acrylic) splash out, then close it.
     let splashOp = 1;
     const fadeOut = setInterval(() => {
       if (splashWindow.isDestroyed()) return clearInterval(fadeOut);

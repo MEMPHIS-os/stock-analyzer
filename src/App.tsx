@@ -134,7 +134,7 @@ function AppShell() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-dark-900">
+    <div className="h-screen flex flex-col overflow-hidden app-bg">
       <UpdateBanner />
       <div className={`transition-all duration-300 overflow-hidden ${tickerHidden ? 'h-0' : 'h-7'}`}>
         <TickerBand items={tickerItems} />

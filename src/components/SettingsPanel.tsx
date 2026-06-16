@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette, Coins } from 'lucide-react';
-import { useApp, ACCENTS, type AccentColor } from '../context';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette, Coins, Blend } from 'lucide-react';
+import { useApp, ACCENTS, type AccentColor, type GlassLevel } from '../context';
 import { SplitFlap } from './SplitFlap';
 
 const ACCENT_LABELS_EN: Record<AccentColor, string> = {
   blue: 'Blue', green: 'Green', violet: 'Violet', amber: 'Amber',
   rose: 'Rose', cyan: 'Cyan', teal: 'Teal',
 };
+
+const GLASS_LEVELS: { value: GlassLevel; de: string; en: string }[] = [
+  { value: 'off', de: 'Aus', en: 'Off' },
+  { value: 'low', de: 'Dezent', en: 'Subtle' },
+  { value: 'medium', de: 'Mittel', en: 'Medium' },
+  { value: 'high', de: 'Stark', en: 'Strong' },
+];
 
 const SHORTCUTS = [
   { keys: 'Ctrl+K', de: 'Aktie suchen', en: 'Search stock' },
@@ -34,6 +41,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     toggleSplitFlap,
     accent,
     setAccent,
+    glassLevel,
+    setGlassLevel,
   } = useApp();
   const de = locale === 'de';
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -165,6 +174,38 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Transparency / frosted glass */}
+          <div>
+            <label className="text-[11px] text-txt-muted font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <Blend className="w-3.5 h-3.5" />
+              {de ? 'Transparenz (Glas)' : 'Transparency (Glass)'}
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {GLASS_LEVELS.map((lvl) => {
+                const active = glassLevel === lvl.value;
+                return (
+                  <button
+                    key={lvl.value}
+                    onClick={() => setGlassLevel(lvl.value)}
+                    className={`flex items-center justify-center py-2.5 rounded-xl border transition-all duration-200 ${
+                      active
+                        ? 'bg-accent/15 border-accent/40 text-accent shadow-glow-sm'
+                        : 'border-border/10 text-txt-secondary hover:border-border/30 hover:bg-dark-700/30'
+                    }`}
+                    style={!active ? { background: 'var(--glass-bg)' } : {}}
+                  >
+                    <span className="text-sm font-medium">{de ? lvl.de : lvl.en}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-txt-muted leading-snug mt-2">
+              {de
+                ? 'Lässt das ganze Fenster (inkl. Kacheln) auf dem Desktop durchscheinen. Benötigt Windows 11.'
+                : 'Makes the whole window (tiles included) translucent over your desktop. Requires Windows 11.'}
+            </p>
           </div>
 
           {/* Language */}

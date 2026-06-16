@@ -14,6 +14,17 @@ import '@fontsource/jetbrains-mono/700.css';
 import '@fontsource/jetbrains-mono/800.css';
 import './index.css';
 
+// Inside the Windows 11 Electron shell the window has a native acrylic backdrop
+// (see electron/main.ts). Flag the document so index.css makes the app's base
+// layer translucent (frosted glass) and plays the intro fade. In a plain
+// browser this class is absent → the app stays fully opaque (safe fallback).
+{
+  const ua = navigator.userAgent;
+  if (ua.includes('Electron') && ua.includes('Windows')) {
+    document.documentElement.classList.add('acrylic');
+  }
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

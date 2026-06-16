@@ -102,6 +102,58 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
     background-repeat: repeat;
   }
+
+  /* ─── Windows 11 acrylic / frosted-glass (opt-in) ───
+     The Electron window always enables a native acrylic backdrop on a
+     transparent base (see electron/main.ts). `html.acrylic` is set by the
+     renderer ONLY inside that Windows shell (src/main.tsx) — in a plain browser
+     the app stays opaque. Whether any transparency is actually shown is the
+     user's choice: AppContext writes data-glass = off|low|medium|high, default
+     OFF → normal, fully opaque mode. When a level is active the WHOLE UI goes
+     translucent — the base layer (--app-bg-alpha) AND every glass surface
+     (--glass-bg: cards, header, sidebar, panels, ticker, bottom-nav) — so the
+     blurred desktop shows through everywhere, not just between the tiles. */
+  :root { --app-bg-alpha: 1; }
+
+  .app-bg {
+    background-color: rgb(var(--color-bg-900) / var(--app-bg-alpha));
+  }
+
+  html.acrylic[data-glass="low"]    { --app-bg-alpha: 0.88; --glass-alpha: 0.60; }
+  html.acrylic[data-glass="medium"] { --app-bg-alpha: 0.70; --glass-alpha: 0.44; }
+  html.acrylic[data-glass="high"]   { --app-bg-alpha: 0.48; --glass-alpha: 0.28; }
+
+  /* Active level → base layers fully transparent (so the OS acrylic shows) and
+     every glass surface inherits the lighter, tunable --glass-alpha. */
+  html.acrylic[data-glass="low"],
+  html.acrylic[data-glass="medium"],
+  html.acrylic[data-glass="high"] {
+    --glass-bg: rgb(var(--color-bg-800) / var(--glass-alpha));
+    background-color: transparent !important;
+  }
+  html.acrylic[data-glass="low"] body,
+  html.acrylic[data-glass="medium"] body,
+  html.acrylic[data-glass="high"] body {
+    background-color: transparent !important;
+  }
+
+  /* Light theme keeps a touch more opacity so text stays readable. */
+  html.acrylic[data-theme="light"][data-glass="low"]    { --glass-bg: rgb(255 255 255 / 0.74); }
+  html.acrylic[data-theme="light"][data-glass="medium"] { --glass-bg: rgb(255 255 255 / 0.58); }
+  html.acrylic[data-theme="light"][data-glass="high"]   { --glass-bg: rgb(255 255 255 / 0.42); }
+
+  /* Soft intro fade for the shell — replaces the old window-opacity fade, which
+     would have made the window layered and disabled the acrylic. */
+  @keyframes appIntro {
+    from { opacity: 0; transform: translateY(6px) scale(0.994); }
+    to   { opacity: 1; transform: none; }
+  }
+  html.acrylic #root {
+    animation: appIntro 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.acrylic #root { animation: none; }
+  }
 }
 
 @layer base {
