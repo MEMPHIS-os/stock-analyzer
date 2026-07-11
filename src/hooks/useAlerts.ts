@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { formatPrice } from '../formatters';
 
 export type AlertKind = 'price' | 'percentChange' | 'volumeSpike' | 'rsi' | 'trendlineCross';
@@ -101,9 +101,13 @@ function describeAlert(alert: PriceAlert, locale: 'de' | 'en', currency = 'USD')
   const de = locale === 'de';
   if (alert.kind === 'percentChange') {
     const dir = alert.condition === 'above' ? '≥' : '≤';
+    const threshold =
+      alert.condition === 'above'
+        ? Math.abs(alert.targetPercent ?? 0)
+        : -Math.abs(alert.targetPercent ?? 0);
     return de
-      ? `${alert.symbol} Tagesänderung ${dir} ${alert.targetPercent}%`
-      : `${alert.symbol} daily change ${dir} ${alert.targetPercent}%`;
+      ? `${alert.symbol} Tagesänderung ${dir} ${threshold}%`
+      : `${alert.symbol} daily change ${dir} ${threshold}%`;
   }
   if (alert.kind === 'volumeSpike') {
     return de
@@ -227,11 +231,13 @@ export function useAlerts() {
               (alert.condition === 'above' && price >= alert.targetPrice) ||
               (alert.condition === 'below' && price <= alert.targetPrice);
           } else if (alert.kind === 'percentChange' && alert.targetPercent != null) {
+            // targetPercent is stored as a positive magnitude ("5 = ±5%/day");
+            // 'below' means "fell by at least X%", so compare against -X.
             const pct = quote.regularMarketChangePercent;
             if (pct != null && !isNaN(pct)) {
               isTriggered =
-                (alert.condition === 'above' && pct >= alert.targetPercent) ||
-                (alert.condition === 'below' && pct <= alert.targetPercent);
+                (alert.condition === 'above' && pct >= Math.abs(alert.targetPercent)) ||
+                (alert.condition === 'below' && pct <= -Math.abs(alert.targetPercent));
             }
           } else if (alert.kind === 'volumeSpike' && alert.targetMultiplier != null) {
             const vol = quote.regularMarketVolume;
@@ -297,8 +303,8 @@ export function useAlerts() {
     []
   );
 
-  const activeAlerts = alerts.filter((a) => !a.triggered);
-  const triggeredAlerts = alerts.filter((a) => a.triggered);
+  const activeAlerts = useMemo(() => alerts.filter((a) => !a.triggered), [alerts]);
+  const triggeredAlerts = useMemo(() => alerts.filter((a) => a.triggered), [alerts]);
 
   return {
     alerts,

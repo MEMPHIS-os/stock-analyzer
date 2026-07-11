@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { startServer } from '../server';
 
 let mainWindow: BrowserWindow | null = null;
 let httpServer: import('http').Server | null = null;
+let serverPort: number | null = null;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
 let isQuittingForUpdate = false;
 let cleanedUp = false;
@@ -28,6 +29,10 @@ function cleanupBeforeQuit() {
     // the port is released immediately, not when the sockets time out.
     (httpServer as any)?.closeAllConnections?.();
   } catch {}
+  // Drop the references so a later createWindow (macOS 'activate' edge case)
+  // starts a fresh server instead of reusing the closed one.
+  httpServer = null;
+  serverPort = null;
 }
 
 async function createWindow() {
@@ -71,9 +76,15 @@ async function createWindow() {
   // http://localhost:<port>, and Chromium keys localStorage by that origin —
   // so a fixed port is what keeps the portfolio, watchlist, drawings and alerts
   // persisted across restarts. startServer walks up from here if the port is
-  // taken (and only falls back to a random port as a last resort).
-  const { port, server } = await startServer(distPath, 38473);
-  httpServer = server;
+  // taken (and only falls back to a random port as a last resort). Reuse an
+  // already-running server (e.g. on macOS 'activate') instead of starting a
+  // second one on a different port/origin.
+  if (!httpServer || serverPort == null) {
+    const { port, server } = await startServer(distPath, 38473);
+    httpServer = server;
+    serverPort = port;
+  }
+  const port = serverPort;
   splashStatus('Marktdaten werden geladen…');
 
   mainWindow = new BrowserWindow({
@@ -96,6 +107,27 @@ async function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
     },
+  });
+
+  // ─── Navigation hardening ───
+  // External links (news feeds etc.) must never open an Electron window that
+  // inherits our preload/webPreferences — hand them to the OS browser instead.
+  // about:blank stays allowed for the print-report fallback (pdfReport.ts).
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+      return { action: 'deny' };
+    }
+    return url === 'about:blank' ? { action: 'allow' } : { action: 'deny' };
+  });
+
+  const appOrigin = `http://localhost:${port}`;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      if (new URL(url).origin !== appOrigin) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
   });
 
   // Helper to show main window and cross-fade out the splash (only once)
@@ -152,35 +184,34 @@ async function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function registerIpcHandlers() {
   // ─── Native desktop notifications ───
-  ipcMain.on('show-notification', (_event, { title, body }: { title: string; body: string }) => {
-    if (Notification.isSupported()) {
-      const notification = new Notification({
-        title,
-        body,
-        icon: path.join(__dirname, '..', 'build', 'icon.ico'),
-        silent: false,
-      });
-      notification.on('click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-      });
-      notification.show();
-    }
+  ipcMain.on('show-notification', (_event, payload: unknown) => {
+    const data = payload as { title?: unknown; body?: unknown } | null | undefined;
+    const title = typeof data?.title === 'string' ? data.title.slice(0, 256) : null;
+    const body = typeof data?.body === 'string' ? data.body.slice(0, 1024) : '';
+    if (!title || !Notification.isSupported()) return;
+    const notification = new Notification({
+      title,
+      body,
+      icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+      silent: false,
+    });
+    notification.on('click', () => {
+      mainWindow?.show();
+      mainWindow?.focus();
+    });
+    notification.show();
   });
 
   // ─── App version request ───
   ipcMain.handle('get-app-version', () => {
     return app.getVersion();
-  });
-
-  // ─── Auto-Update (only in packaged mode) ───
-  if (app.isPackaged) {
-    setupAutoUpdater();
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
   });
 }
 
@@ -345,28 +376,57 @@ function setupAutoUpdater() {
   }, 4 * 60 * 60 * 1000);
 }
 
-app.whenReady()
-  .then(createWindow)
-  .catch((err) => {
-    // startServer can reject if no port could be bound (rare). Don't leave the
-    // app hanging on an unhandled rejection — log and exit cleanly.
-    console.error('Fatal: StockAnalyzer failed to start:', err);
-    app.quit();
+// Single-instance lock: a second instance would fail to bind port 38473, walk
+// to another port and therefore see a DIFFERENT localStorage origin (empty
+// portfolio/watchlist; entries made there would be orphaned). Focus the
+// existing window instead.
+const gotInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
-// Run cleanup once on any quit path (normal quit or electron-updater's
-// install-on-quit), so the HTTP server/port is released before the process
-// exits. quitAndInstall closes windows first, so this also covers the update
-// flow even though before-quit ordering differs there.
-app.on('before-quit', cleanupBeforeQuit);
+  app.whenReady()
+    .then(() => {
+      registerIpcHandlers();
+      // ─── Auto-Update (only in packaged mode) ───
+      if (app.isPackaged) {
+        setupAutoUpdater();
+      }
+      return createWindow();
+    })
+    .catch((err) => {
+      // startServer can reject if no port could be bound (rare). Don't leave the
+      // app hanging on an unhandled rejection — log and exit cleanly.
+      console.error('Fatal: StockAnalyzer failed to start:', err);
+      app.quit();
+    });
 
-app.on('window-all-closed', () => {
-  cleanupBeforeQuit();
-  // During an update install, quitAndInstall owns the quit — calling app.quit()
-  // here too would race it (we destroy the windows right before installing).
-  if (!isQuittingForUpdate) app.quit();
-});
+  // Run cleanup once on any quit path (normal quit or electron-updater's
+  // install-on-quit), so the HTTP server/port is released before the process
+  // exits. quitAndInstall closes windows first, so this also covers the update
+  // flow even though before-quit ordering differs there.
+  app.on('before-quit', cleanupBeforeQuit);
 
-app.on('activate', () => {
-  if (mainWindow === null) createWindow();
-});
+  app.on('window-all-closed', () => {
+    cleanupBeforeQuit();
+    // During an update install, quitAndInstall owns the quit — calling app.quit()
+    // here too would race it (we destroy the windows right before installing).
+    if (!isQuittingForUpdate) app.quit();
+  });
+
+  app.on('activate', () => {
+    if (mainWindow === null) {
+      createWindow().catch((err) => {
+        console.error('Fatal: StockAnalyzer failed to restart window:', err);
+      });
+    }
+  });
+}

@@ -29,16 +29,39 @@ export interface PortfolioTransaction {
 const HOLDINGS_KEY = 'stockanalyzer_portfolio';
 const TRANSACTIONS_KEY = 'stockanalyzer_transactions';
 
-function loadFromStorage<T>(key: string, fallback: T): T {
+function loadFromStorage<T>(key: string, isValid: (item: unknown) => item is T): T[] {
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
-      return JSON.parse(raw) as T;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(isValid);
     }
   } catch {
     // corrupted data – fall through
   }
-  return fallback;
+  return [];
+}
+
+export function isValidHolding(item: unknown): item is PortfolioHolding {
+  if (!item || typeof item !== 'object') return false;
+  const h = item as Partial<PortfolioHolding>;
+  return (
+    typeof h.symbol === 'string' &&
+    typeof h.shares === 'number' &&
+    typeof h.avgPrice === 'number'
+  );
+}
+
+export function isValidTransaction(item: unknown): item is PortfolioTransaction {
+  if (!item || typeof item !== 'object') return false;
+  const t = item as Partial<PortfolioTransaction>;
+  return (
+    typeof t.symbol === 'string' &&
+    (t.type === 'buy' || t.type === 'sell') &&
+    typeof t.shares === 'number' &&
+    typeof t.price === 'number' &&
+    typeof t.date === 'number'
+  );
 }
 
 function saveToStorage<T>(key: string, value: T): void {
@@ -136,11 +159,11 @@ export function computeRealizedBySymbol(
 
 export function usePortfolio() {
   const [holdings, setHoldings] = useState<PortfolioHolding[]>(() =>
-    loadFromStorage<PortfolioHolding[]>(HOLDINGS_KEY, []),
+    loadFromStorage(HOLDINGS_KEY, isValidHolding),
   );
 
   const [transactions, setTransactions] = useState<PortfolioTransaction[]>(() =>
-    loadFromStorage<PortfolioTransaction[]>(TRANSACTIONS_KEY, []),
+    loadFromStorage(TRANSACTIONS_KEY, isValidTransaction),
   );
 
   // Persist holdings whenever they change

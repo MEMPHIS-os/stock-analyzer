@@ -16,14 +16,29 @@ function getCurrencyFormatter(currency: string, intlLocale: string): Intl.Number
   return fmt;
 }
 
+/**
+ * Normalise pence-quoted currencies: Yahoo reports LSE listings as 'GBp'
+ * (or 'GBX') with prices in pence, which Intl would render as pounds.
+ */
+export function normalizeCurrency(
+  value: number,
+  currency: string,
+): { value: number; currency: string } {
+  if (currency === 'GBp' || currency === 'GBX') {
+    return { value: value / 100, currency: 'GBP' };
+  }
+  return { value, currency };
+}
+
 export function formatPrice(
   value: number | undefined | null,
   currency: string = 'USD',
   locale: 'de' | 'en' = 'en',
 ): string {
   if (value == null || isNaN(value)) return '—';
+  const norm = normalizeCurrency(value, currency);
   const intlLocale = locale === 'de' ? 'de-DE' : 'en-US';
-  return getCurrencyFormatter(currency, intlLocale).format(value);
+  return getCurrencyFormatter(norm.currency, intlLocale).format(norm.value);
 }
 
 export function formatChange(value: number | undefined | null): string {

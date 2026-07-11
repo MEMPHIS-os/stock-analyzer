@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { rebuildHoldings, computeRealizedBySymbol, type PortfolioTransaction } from './usePortfolio';
+import {
+  rebuildHoldings,
+  computeRealizedBySymbol,
+  isValidHolding,
+  isValidTransaction,
+  type PortfolioTransaction,
+} from './usePortfolio';
 
 const tx = (over: Partial<PortfolioTransaction>): PortfolioTransaction => ({
   id: Math.random().toString(36).slice(2),
@@ -85,5 +91,49 @@ describe('computeRealizedBySymbol', () => {
   it('returns no entry for symbols never sold', () => {
     const txs = [tx({ shares: 10, price: 100 })];
     expect(computeRealizedBySymbol(txs).AAPL).toBeUndefined();
+  });
+});
+
+describe('isValidHolding (localStorage guard)', () => {
+  it('accepts a well-formed holding', () => {
+    expect(isValidHolding({ symbol: 'AAPL', shares: 10, avgPrice: 100 })).toBe(true);
+    expect(isValidHolding({ symbol: 'AAPL', name: 'Apple', shares: 10, avgPrice: 100 })).toBe(true);
+  });
+
+  it('rejects non-objects and null (corrupt "{}"/"null"/string payload entries)', () => {
+    expect(isValidHolding(null)).toBe(false);
+    expect(isValidHolding(undefined)).toBe(false);
+    expect(isValidHolding('AAPL')).toBe(false);
+    expect(isValidHolding(42)).toBe(false);
+    expect(isValidHolding({})).toBe(false);
+  });
+
+  it('rejects objects with missing or wrongly-typed fields', () => {
+    expect(isValidHolding({ symbol: 'AAPL', shares: 10 })).toBe(false);
+    expect(isValidHolding({ symbol: 'AAPL', shares: '10', avgPrice: 100 })).toBe(false);
+    expect(isValidHolding({ symbol: 7, shares: 10, avgPrice: 100 })).toBe(false);
+  });
+});
+
+describe('isValidTransaction (localStorage guard)', () => {
+  const valid = { symbol: 'AAPL', type: 'buy', shares: 10, price: 100, date: 1704067200000 };
+
+  it('accepts well-formed buy/sell transactions', () => {
+    expect(isValidTransaction(valid)).toBe(true);
+    expect(isValidTransaction({ ...valid, type: 'sell' })).toBe(true);
+  });
+
+  it('rejects non-objects and null', () => {
+    expect(isValidTransaction(null)).toBe(false);
+    expect(isValidTransaction([])).toBe(false);
+    expect(isValidTransaction('buy')).toBe(false);
+    expect(isValidTransaction({})).toBe(false);
+  });
+
+  it('rejects unknown transaction types and wrongly-typed fields', () => {
+    expect(isValidTransaction({ ...valid, type: 'transfer' })).toBe(false);
+    expect(isValidTransaction({ ...valid, shares: '10' })).toBe(false);
+    expect(isValidTransaction({ ...valid, price: null })).toBe(false);
+    expect(isValidTransaction({ ...valid, date: '2024-01-01' })).toBe(false);
   });
 });

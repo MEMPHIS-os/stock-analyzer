@@ -5,6 +5,7 @@ import { useIndicatorAlerts } from './hooks/useIndicatorAlerts';
 import type { WatchlistItem } from './types';
 import { t as translate, type Locale } from './i18n';
 import { fetchExchangeRate } from './api';
+import { normalizeCurrency } from './formatters';
 
 const WATCHLIST_KEY = 'stockanalyzer_watchlist';
 const THEME_KEY = 'stockanalyzer_theme';
@@ -118,10 +119,19 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null);
 
+function isValidWatchlistItem(item: unknown): item is WatchlistItem {
+  if (!item || typeof item !== 'object') return false;
+  const w = item as Partial<WatchlistItem>;
+  return typeof w.symbol === 'string' && typeof w.name === 'string';
+}
+
 function loadWatchlist(): WatchlistItem[] {
   try {
     const stored = localStorage.getItem(WATCHLIST_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed: unknown = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed.filter(isValidWatchlistItem);
+    }
   } catch {}
   return DEFAULT_WATCHLIST;
 }
@@ -188,6 +198,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(loadDisplayCurrency);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  // EUR rate per 1 unit of each non-USD foreign currency, fetched on demand.
+  const [fxRates, setFxRates] = useState<Record<string, number>>({});
+  const fxRatesRef = useRef(fxRates);
+  fxRatesRef.current = fxRates;
+  const fxPendingRef = useRef<Set<string>>(new Set());
   const [splitFlapEnabled, setSplitFlapEnabled] = useState<boolean>(loadSplitFlap);
   const [accent, setAccentState] = useState<AccentColor>(loadAccent);
   const [glassLevel, setGlassLevelState] = useState<GlassLevel>(loadGlassLevel);
@@ -253,7 +268,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ─── Currency conversion ───
 
-  // Fetch exchange rate on mount and every 5 minutes
+  // Fetch exchange rates on mount and every 5 minutes (USD always, plus any
+  // other currency that convertPrice has requested so far).
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -261,10 +277,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const result = await fetchExchangeRate('USD', 'EUR');
         if (!cancelled) setExchangeRate(result.rate);
       } catch {}
+      await Promise.all(
+        Object.keys(fxRatesRef.current).map(async (ccy) => {
+          try {
+            const result = await fetchExchangeRate(ccy, 'EUR');
+            if (!cancelled) setFxRates((prev) => ({ ...prev, [ccy]: result.rate }));
+          } catch {}
+        }),
+      );
     };
     load();
     const iv = setInterval(load, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  // Lazily fetch the EUR rate for a currency the first time it is seen.
+  const requestFxRate = useCallback((currency: string) => {
+    if (fxPendingRef.current.has(currency)) return;
+    fxPendingRef.current.add(currency);
+    fetchExchangeRate(currency, 'EUR')
+      .then((result) => {
+        setFxRates((prev) => ({ ...prev, [currency]: result.rate }));
+      })
+      .catch(() => {
+        fxPendingRef.current.delete(currency);
+      });
   }, []);
 
   const toggleDisplayCurrency = useCallback(() => {
@@ -285,20 +322,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const convertPrice = useCallback(
     (price: number, nativeCurrency: string): { value: number; currency: string; converted: boolean } => {
-      if (displayCurrency === 'native' || !exchangeRate) {
-        return { value: price, currency: nativeCurrency, converted: false };
+      // Pence-quoted LSE listings (GBp/GBX) are normalised to pounds first.
+      const norm = normalizeCurrency(price, nativeCurrency);
+      if (displayCurrency === 'native') {
+        return { value: norm.value, currency: norm.currency, converted: false };
       }
       // Target: EUR
-      if (nativeCurrency === 'EUR') {
-        return { value: price, currency: 'EUR', converted: false };
+      if (norm.currency === 'EUR') {
+        return { value: norm.value, currency: 'EUR', converted: false };
       }
-      if (nativeCurrency === 'USD') {
-        return { value: price * exchangeRate, currency: 'EUR', converted: true };
+      const rate = norm.currency === 'USD' ? exchangeRate : fxRates[norm.currency];
+      if (rate != null) {
+        return { value: norm.value * rate, currency: 'EUR', converted: true };
       }
-      // For other currencies (GBP, JPY, etc.) keep native
-      return { value: price, currency: nativeCurrency, converted: false };
+      // Rate not loaded yet: schedule a fetch and keep the native value for now.
+      if (norm.currency !== 'USD') requestFxRate(norm.currency);
+      return { value: norm.value, currency: norm.currency, converted: false };
     },
-    [displayCurrency, exchangeRate]
+    [displayCurrency, exchangeRate, fxRates, requestFxRate]
   );
 
   // ─── Watchlist ───

@@ -13,11 +13,30 @@ const CACHE_FILE = path.join(
 
 let diskCache: Record<string, { data: any; expires: number }> = {};
 
+const DISK_CACHE_MAX_ENTRIES = 1000;
+
+// Drop expired entries and enforce a size cap (oldest-expiring first) so
+// cache.json cannot grow without bound over weeks of use.
+function pruneDiskCache() {
+  const now = Date.now();
+  for (const key of Object.keys(diskCache)) {
+    if (now >= diskCache[key].expires) delete diskCache[key];
+  }
+  const keys = Object.keys(diskCache);
+  if (keys.length > DISK_CACHE_MAX_ENTRIES) {
+    keys.sort((a, b) => diskCache[a].expires - diskCache[b].expires);
+    for (const key of keys.slice(0, keys.length - DISK_CACHE_MAX_ENTRIES)) {
+      delete diskCache[key];
+    }
+  }
+}
+
 function loadDiskCache() {
   try {
     if (fs.existsSync(CACHE_FILE)) {
       const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
       diskCache = JSON.parse(raw);
+      pruneDiskCache();
       console.log(`  Loaded ${Object.keys(diskCache).length} cached entries from disk`);
     }
   } catch { /* ignore corrupt cache */ }
@@ -25,9 +44,10 @@ function loadDiskCache() {
 
 function saveDiskCache() {
   try {
+    pruneDiskCache();
     const dir = path.dirname(CACHE_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(diskCache), 'utf-8');
+    fs.writeFile(CACHE_FILE, JSON.stringify(diskCache), 'utf-8', () => { /* ignore write errors */ });
   } catch { /* ignore write errors */ }
 }
 
@@ -43,7 +63,18 @@ loadDiskCache();
 
 export function createApp() {
   const app = express();
-  app.use(cors());
+  // Local companion server: only the app's own localhost origins may read
+  // responses cross-origin (dev goes through the Vite proxy anyway).
+  app.use(cors({
+    origin: [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/],
+  }));
+  // Reject non-local Host headers (DNS-rebinding protection).
+  const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+  app.use((req, res, next) => {
+    const host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+    if (ALLOWED_HOSTS.has(host)) return next();
+    res.status(403).json({ error: 'Forbidden' });
+  });
   app.use(express.json());
 
 // ─── Response Cache (memory + disk fallback) ───
@@ -254,9 +285,9 @@ app.get('/api/quotes', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('Quotes error:', error.message);
-    // Fallback: try v8 chart API individually (no auth needed)
+    // Fallback: try v8 chart API individually (no auth needed, capped fan-out)
     const symbols = (req.query.symbols as string || '').split(',').filter(Boolean);
-    const fallbacks = await Promise.all(symbols.map(s => v8QuoteFallback(s.trim())));
+    const fallbacks = await Promise.all(symbols.slice(0, 60).map(s => v8QuoteFallback(s.trim())));
     const validFallbacks = fallbacks.filter(Boolean);
     if (validFallbacks.length > 0) return res.json(validFallbacks);
     // Last resort: stale cached data (offline mode)
@@ -267,10 +298,17 @@ app.get('/api/quotes', async (req, res) => {
 });
 
 // ─── Chart data (v8 - no auth needed) ───
+const CHART_RANGES = new Set(['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']);
+const CHART_INTERVALS = new Set(['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo']);
+
 app.get('/api/chart/:symbol', async (req, res) => {
+  const range = String(req.query.range ?? '1y');
+  const interval = String(req.query.interval ?? '1d');
+  if (!CHART_RANGES.has(range) || !CHART_INTERVALS.has(interval)) {
+    return res.status(400).json({ error: 'Invalid range/interval' });
+  }
   try {
     const { symbol } = req.params;
-    const { range = '1y', interval = '1d' } = req.query;
 
     const cacheKey = `chart:${symbol}:${range}:${interval}`;
     const cached = getCached(cacheKey);
@@ -287,11 +325,13 @@ app.get('/api/chart/:symbol', async (req, res) => {
     const ohlcv = chartResult.indicators?.quote?.[0] || {};
 
     // Intraday intervals need unix timestamps (seconds) for lightweight-charts;
-    // daily+ intervals use YYYY-MM-DD date strings.
-    const isIntraday = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h'].includes(interval as string);
+    // daily+ intervals use YYYY-MM-DD date strings. Shift by the exchange's GMT
+    // offset so the calendar day matches the exchange's local trading day.
+    const isIntraday = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h'].includes(interval);
+    const gmtOffset = chartResult.meta?.gmtoffset ?? 0;
 
     const quotes = ts.map((t: number, i: number) => ({
-      date: isIntraday ? t : new Date(t * 1000).toISOString().split('T')[0],
+      date: isIntraday ? t : new Date((t + gmtOffset) * 1000).toISOString().split('T')[0],
       open: ohlcv.open?.[i],
       high: ohlcv.high?.[i],
       low: ohlcv.low?.[i],
@@ -307,7 +347,6 @@ app.get('/api/chart/:symbol', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error(`Chart error for ${req.params.symbol}:`, error.message);
-    const { range = '1y', interval = '1d' } = req.query;
     const stale = getStale(`chart:${req.params.symbol}:${range}:${interval}`);
     if (stale) return res.json(stale);
     res.status(500).json({ error: 'Failed to fetch chart data' });
@@ -702,7 +741,7 @@ app.get('/api/news/:symbol', async (req, res) => {
 // ─── Sparkline batch (5d mini charts for watchlist) ───
 app.get('/api/sparklines', async (req, res) => {
   try {
-    const symbols = (req.query.symbols as string || '').split(',').filter(Boolean);
+    const symbols = (req.query.symbols as string || '').split(',').filter(Boolean).slice(0, 60);
     if (!symbols.length) return res.json({});
 
     const result: Record<string, number[]> = {};
@@ -1095,7 +1134,9 @@ export function startServer(
     let attempt = 0;
 
     const tryListen = (p: number) => {
-      const server = app.listen(p, () => {
+      // Loopback only — this is a local companion server for the Electron
+      // renderer and must never be reachable from the network.
+      const server = app.listen(p, '127.0.0.1', () => {
         const addr = server.address();
         const actualPort = typeof addr === 'object' && addr ? addr.port : p;
         console.log(`\n  StockAnalyzer running at http://localhost:${actualPort}\n`);

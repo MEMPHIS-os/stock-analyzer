@@ -9,7 +9,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // 127.0.0.1 (not localhost): the server binds to 127.0.0.1 only, and
+        // 'localhost' can resolve to ::1 first on IPv6-preferring systems.
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
       },
     },

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
-import type { IChartApi, SeriesMarker, Time } from 'lightweight-charts';
+import type { IChartApi, LogicalRange, SeriesMarker, Time } from 'lightweight-charts';
 import {
   calculateSMA,
   calculateEMA,
@@ -79,6 +79,9 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
   const legendRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const mainChartApi = useRef<IChartApi | null>(null);
+  // Main chart instance as state so the sub-chart effects re-sync their time
+  // scales whenever the main chart is rebuilt.
+  const [mainChart, setMainChart] = useState<IChartApi | null>(null);
   const priceSeriesRef = useRef<any>(null);
   const rsiChartApi = useRef<IChartApi | null>(null);
   const macdChartApi = useRef<IChartApi | null>(null);
@@ -195,6 +198,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       width: container.clientWidth,
     });
     mainChartApi.current = chart;
+    setMainChart(chart);
 
     // Price series
     let priceSeries: any;
@@ -1061,10 +1065,19 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
       window.removeEventListener('resize', handleResize);
       chart.remove();
       mainChartApi.current = null;
+      setMainChart(null);
       priceSeriesRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, displayData, chartType, indicators, closes, times, dataMap, height, createChartOptions, chartColors, drawings, alertLevels, logScale, showVolumeProfile]);
+
+  // Earnings markers can resolve after the chart was built (fundamentals load
+  // in parallel) — apply them without rebuilding the chart.
+  useEffect(() => {
+    try {
+      priceSeriesRef.current?.setMarkers(markers);
+    } catch {}
+  }, [markers, data]);
 
   // Drag handler for text annotations
   useEffect(() => {
@@ -1209,7 +1222,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
     oversold.setData(rsiTimes.map((time) => ({ time: time as any, value: 30 })));
 
     chart.timeScale().fitContent();
-    syncTimeScale(chart);
+    const unsync = syncTimeScale(chart, mainChart);
 
     const handleResize = () => {
       chart.applyOptions({ width: container.clientWidth });
@@ -1218,10 +1231,11 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      unsync();
       chart.remove();
       rsiChartApi.current = null;
     };
-  }, [showRSI, closes, times, createChartOptions, chartColors]);
+  }, [showRSI, closes, times, createChartOptions, chartColors, mainChart]);
 
   // MACD chart
   useEffect(() => {
@@ -1273,7 +1287,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
     );
 
     chart.timeScale().fitContent();
-    syncTimeScale(chart);
+    const unsync = syncTimeScale(chart, mainChart);
 
     const handleResize = () => {
       chart.applyOptions({ width: container.clientWidth });
@@ -1282,10 +1296,11 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      unsync();
       chart.remove();
       macdChartApi.current = null;
     };
-  }, [showMACD, closes, times, createChartOptions, chartColors]);
+  }, [showMACD, closes, times, createChartOptions, chartColors, mainChart]);
 
   // Stochastic chart
   useEffect(() => {
@@ -1340,7 +1355,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
     os.setData(stochTimes.map((time) => ({ time: time as any, value: 20 })));
 
     chart.timeScale().fitContent();
-    syncTimeScale(chart);
+    const unsync = syncTimeScale(chart, mainChart);
 
     const handleResize = () => {
       chart.applyOptions({ width: container.clientWidth });
@@ -1349,10 +1364,11 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      unsync();
       chart.remove();
       stochChartApi.current = null;
     };
-  }, [showStochastic, data, times, createChartOptions, chartColors]);
+  }, [showStochastic, data, times, createChartOptions, chartColors, mainChart]);
 
   // ATR chart
   useEffect(() => {
@@ -1380,7 +1396,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
     series.setData(values.map((v, i) => ({ time: times[startIndex + i] as any, value: v })));
 
     chart.timeScale().fitContent();
-    syncTimeScale(chart);
+    const unsync = syncTimeScale(chart, mainChart);
 
     const handleResize = () => {
       chart.applyOptions({ width: container.clientWidth });
@@ -1389,10 +1405,11 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      unsync();
       chart.remove();
       atrChartApi.current = null;
     };
-  }, [showATR, data, times, createChartOptions, chartColors]);
+  }, [showATR, data, times, createChartOptions, chartColors, mainChart]);
 
   // Williams %R chart
   useEffect(() => {
@@ -1439,7 +1456,7 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
     os.setData(willTimes.map((time) => ({ time: time as any, value: -80 })));
 
     chart.timeScale().fitContent();
-    syncTimeScale(chart);
+    const unsync = syncTimeScale(chart, mainChart);
 
     const handleResize = () => {
       chart.applyOptions({ width: container.clientWidth });
@@ -1448,22 +1465,30 @@ const StockChart = forwardRef<StockChartRef, StockChartProps>(function StockChar
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      unsync();
       chart.remove();
       williamsChartApi.current = null;
     };
-  }, [showWilliamsR, data, times, createChartOptions, chartColors]);
+  }, [showWilliamsR, data, times, createChartOptions, chartColors, mainChart]);
 
-  // Sync time scales helper
-  function syncTimeScale(subChart: IChartApi) {
-    if (!mainChartApi.current) return;
-    const mainTs = mainChartApi.current.timeScale();
+  // Sync time scales helper — returns a dispose function that unsubscribes
+  // both handlers again.
+  function syncTimeScale(subChart: IChartApi, main: IChartApi | null): () => void {
+    if (!main) return () => {};
+    const mainTs = main.timeScale();
     const subTs = subChart.timeScale();
-    mainTs.subscribeVisibleLogicalRangeChange((range) => {
+    const onMainRangeChange = (range: LogicalRange | null) => {
       if (range) subTs.setVisibleLogicalRange(range);
-    });
-    subTs.subscribeVisibleLogicalRangeChange((range) => {
+    };
+    const onSubRangeChange = (range: LogicalRange | null) => {
       if (range) mainTs.setVisibleLogicalRange(range);
-    });
+    };
+    mainTs.subscribeVisibleLogicalRangeChange(onMainRangeChange);
+    subTs.subscribeVisibleLogicalRangeChange(onSubRangeChange);
+    return () => {
+      try { mainTs.unsubscribeVisibleLogicalRangeChange(onMainRangeChange); } catch {}
+      try { subTs.unsubscribeVisibleLogicalRangeChange(onSubRangeChange); } catch {}
+    };
   }
 
   if (!data.length) {
