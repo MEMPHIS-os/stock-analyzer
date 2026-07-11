@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef, useCallback, useId, useMemo, type DragEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef, useCallback, useId, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   TrendingUp,
   TrendingDown,
@@ -7,16 +7,14 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
-  Settings,
-  X,
-  RotateCcw,
-  GripVertical,
+  SlidersHorizontal,
   PieChart,
   LayoutDashboard,
   Wallet,
   Newspaper,
   CalendarClock,
   Grid3x3,
+  Plus,
 } from 'lucide-react';
 import { useApp } from '../context';
 import {
@@ -36,8 +34,20 @@ import StockContextMenu from '../components/ContextMenu';
 import { Price } from '../components/Price';
 import { SkeletonCard, SkeletonTableRow } from '../components/Skeleton';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { useDashboardLayout, getWidgetLabel } from '../hooks/useDashboardLayout';
-import type { DashboardWidget } from '../hooks/useDashboardLayout';
+import {
+  useDashboardLayout,
+  WIDGET_META,
+  SIZE_SPANS,
+  DASHBOARD_PRESETS,
+} from '../hooks/useDashboardLayout';
+import type { DashboardWidget, WidgetSize } from '../hooks/useDashboardLayout';
+import {
+  CustomizeToolbar,
+  WidgetChrome,
+  WidgetGallery,
+  FirstRunSetup,
+} from '../components/DashboardCustomize';
+import { QuickActionsWidget, MarketStatusWidget } from '../components/DashboardExtraWidgets';
 import type { PortfolioHolding } from '../hooks/usePortfolio';
 import type { QuoteData, NewsItem } from '../types';
 
@@ -53,18 +63,10 @@ const INDEX_NAMES: Record<string, string> = {
   '^RUT': 'Russell 2000',
 };
 
-// Grid placement per widget type: narrow widgets share a row on large screens.
-const WIDGET_SPANS: Record<DashboardWidget['type'], string> = {
-  portfolio: 'lg:col-span-12',
-  marketOverview: 'lg:col-span-12',
-  topGainers: 'lg:col-span-6',
-  topLosers: 'lg:col-span-6',
-  watchlistTable: 'lg:col-span-8',
-  sectorPerformance: 'lg:col-span-4',
-  news: 'lg:col-span-6',
-  earnings: 'lg:col-span-6',
-  miniHeatmap: 'lg:col-span-12',
-};
+// Item counts per widget size for the density-aware widgets.
+const NEWS_MAX_ITEMS: Record<WidgetSize, number> = { S: 4, M: 6, L: 8, XL: 12 };
+const EARNINGS_MAX_ITEMS: Record<WidgetSize, number> = { S: 3, M: 5, L: 8, XL: 8 };
+const WATCHLIST_MAX_ITEMS: Partial<Record<WidgetSize, number>> = { M: 6, L: 10 };
 
 const SECTOR_ETFS = ['XLK', 'XLF', 'XLV', 'XLE', 'XLY', 'XLP', 'XLI', 'XLB', 'XLRE', 'XLU', 'XLC'];
 const SECTOR_NAMES: Record<string, string> = {
@@ -214,108 +216,6 @@ function BackdropSparkline({ data, positive }: { data: number[]; positive: boole
   );
 }
 
-// ─── Config Panel ───
-
-interface ConfigPanelProps {
-  widgets: DashboardWidget[];
-  onToggle: (id: string) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
-  onReset: () => void;
-  onClose: () => void;
-}
-
-function ConfigPanel({ widgets, onToggle, onReorder, onReset, onClose }: ConfigPanelProps) {
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
-  const handleDragStart = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    dragItem.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index));
-  };
-
-  const handleDragOver = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    dragOverItem.current = index;
-    setDragOverIndex(index);
-  };
-
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-  };
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
-      onReorder(dragItem.current, dragOverItem.current);
-    }
-    dragItem.current = null;
-    dragOverItem.current = null;
-    setDragOverIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    dragItem.current = null;
-    dragOverItem.current = null;
-    setDragOverIndex(null);
-  };
-
-  return (
-    <div className="card-glow p-5 mb-6 animate-scale-in">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-bold text-txt-primary">Dashboard konfigurieren</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onReset}
-            className="flex items-center gap-1.5 text-xs text-txt-secondary hover:text-txt-primary transition-all duration-200 px-2.5 py-1.5 rounded-lg hover:bg-dark-600/40"
-            title="Zurücksetzen"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset</span>
-          </button>
-          <button
-            onClick={onClose}
-            className="text-txt-secondary hover:text-txt-primary transition-all duration-200 p-1.5 rounded-lg hover:bg-dark-600/40"
-            title="Schließen"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-      <p className="text-xs text-txt-muted mb-4">Widgets ein-/ausblenden und per Drag & Drop umsortieren.</p>
-      <div className="space-y-1.5">
-        {widgets.map((widget, index) => (
-          <div
-            key={widget.id}
-            draggable
-            onDragStart={handleDragStart(index)}
-            onDragOver={handleDragOver(index)}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onDragEnd={handleDragEnd}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 select-none ${
-              dragOverIndex === index ? 'bg-accent/15 border border-accent/30 shadow-glow-sm' : 'hover:bg-dark-600/30 border border-transparent'
-            }`}
-          >
-            <GripVertical className="w-4 h-4 text-txt-muted cursor-grab flex-shrink-0" />
-            <label className="flex items-center gap-2.5 flex-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={widget.visible}
-                onChange={() => onToggle(widget.id)}
-                className="accent-accent w-4 h-4 cursor-pointer rounded"
-              />
-              <span className="text-sm text-txt-primary">{getWidgetLabel(widget.type)}</span>
-            </label>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Sector Performance Widget ───
 
 function SectorPerformanceWidget({ quotes }: { quotes: QuoteData[] }) {
@@ -403,16 +303,16 @@ interface PortfolioSnapshot {
 function DashboardHero({
   indices,
   snapshot,
-  configOpen,
-  onToggleConfig,
+  editMode,
+  onToggleEdit,
   navigate,
   locale,
   t,
 }: {
   indices: QuoteData[];
   snapshot: PortfolioSnapshot | null;
-  configOpen: boolean;
-  onToggleConfig: () => void;
+  editMode: boolean;
+  onToggleEdit: () => void;
   navigate: (path: string) => void;
   locale: 'de' | 'en';
   t: (key: string) => string;
@@ -513,16 +413,16 @@ function DashboardHero({
         )}
 
         <button
-          onClick={onToggleConfig}
+          onClick={onToggleEdit}
           className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 ${
-            configOpen
+            editMode
               ? 'bg-accent/15 text-accent shadow-glow-sm'
               : 'text-txt-secondary hover:text-txt-primary hover:bg-dark-600/40'
           }`}
-          title={t('dashboard.configure')}
+          title={t('dashboard.customize')}
         >
-          <Settings className={`w-4 h-4 transition-transform duration-300 ${configOpen ? 'rotate-90' : ''}`} />
-          <span className="hidden sm:inline">{t('dashboard.configure')}</span>
+          <SlidersHorizontal className="w-4 h-4" />
+          <span className="hidden sm:inline">{t('dashboard.customize')}</span>
         </button>
       </div>
     </div>
@@ -533,11 +433,34 @@ function DashboardHero({
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { watchlist, locale, t, convertPrice } = useApp();
-  const { widgets, toggleWidget, reorderWidgets, resetLayout } = useDashboardLayout();
+  const {
+    widgets,
+    addWidget,
+    removeWidget,
+    setWidgetSize,
+    reorderWidgets,
+    applyPreset,
+    resetLayout,
+    isFirstRun,
+    dismissFirstRun,
+  } = useDashboardLayout();
   const { holdings, totalInvested } = usePortfolio();
-  const [configOpen, setConfigOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [holdingQuotes, setHoldingQuotes] = useState<Record<string, HoldingQuote>>({});
+
+  useEffect(() => {
+    if (searchParams.get('customize') === '1') {
+      setEditMode(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('customize');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const [indices, setIndices] = useState<QuoteData[]>([]);
   const [watchlistQuotes, setWatchlistQuotes] = useState<QuoteData[]>([]);
@@ -690,11 +613,27 @@ export default function Dashboard() {
           );
 
         case 'news':
-          return <NewsWidget key={widget.id} symbols={newsSymbols} navigate={navigate} locale={locale} t={t} />;
+          return (
+            <NewsWidget
+              key={widget.id}
+              symbols={newsSymbols}
+              maxItems={NEWS_MAX_ITEMS[widget.size]}
+              navigate={navigate}
+              locale={locale}
+              t={t}
+            />
+          );
 
         case 'earnings':
           return (
-            <EarningsWidget key={widget.id} symbols={earningsSymbols} navigate={navigate} locale={locale} t={t} />
+            <EarningsWidget
+              key={widget.id}
+              symbols={earningsSymbols}
+              maxItems={EARNINGS_MAX_ITEMS[widget.size]}
+              navigate={navigate}
+              locale={locale}
+              t={t}
+            />
           );
 
         case 'miniHeatmap':
@@ -711,11 +650,25 @@ export default function Dashboard() {
 
         case 'watchlistTable':
           return (
-            <WatchlistTableSection key={widget.id} watchlistQuotes={watchlistQuotes} sparklines={sparklines} navigate={navigate} locale={locale} t={t} />
+            <WatchlistTableSection
+              key={widget.id}
+              watchlistQuotes={watchlistQuotes}
+              sparklines={sparklines}
+              maxItems={WATCHLIST_MAX_ITEMS[widget.size]}
+              navigate={navigate}
+              locale={locale}
+              t={t}
+            />
           );
 
         case 'sectorPerformance':
           return <SectorPerformanceWidget key={widget.id} quotes={sectorQuotes} />;
+
+        case 'quickActions':
+          return <QuickActionsWidget key={widget.id} navigate={navigate} t={t} />;
+
+        case 'marketStatus':
+          return <MarketStatusWidget key={widget.id} t={t} locale={locale} />;
 
         default:
           return null;
@@ -753,10 +706,35 @@ export default function Dashboard() {
         return screenerStocks.some((s) => s.changePercent < 0);
       case 'sectorPerformance':
         return sectorQuotes.length > 0;
+      case 'quickActions':
+      case 'marketStatus':
+        return true;
       default:
         return true;
     }
   };
+
+  const clearDragState = () => {
+    setDraggedId(null);
+    setDragOverId(null);
+  };
+
+  const firstRunSetup =
+    isFirstRun && !editMode ? (
+      <FirstRunSetup
+        presets={DASHBOARD_PRESETS}
+        onApplyPreset={(id) => {
+          applyPreset(id);
+          dismissFirstRun();
+        }}
+        onCustom={() => {
+          dismissFirstRun();
+          setEditMode(true);
+        }}
+        onSkip={dismissFirstRun}
+        t={t}
+      />
+    ) : null;
 
   if (loading) {
     return (
@@ -776,45 +754,99 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+        {firstRunSetup}
       </div>
     );
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Edit-mode toolbar */}
+      {editMode && (
+        <CustomizeToolbar
+          presets={DASHBOARD_PRESETS}
+          onApplyPreset={applyPreset}
+          onOpenGallery={() => setGalleryOpen(true)}
+          onReset={resetLayout}
+          onDone={() => {
+            setEditMode(false);
+            setGalleryOpen(false);
+            clearDragState();
+          }}
+          t={t}
+        />
+      )}
+
       {/* Hero header */}
       <DashboardHero
         indices={indices}
         snapshot={portfolioSnapshot}
-        configOpen={configOpen}
-        onToggleConfig={() => setConfigOpen((prev) => !prev)}
+        editMode={editMode}
+        onToggleEdit={() => setEditMode((prev) => !prev)}
         navigate={navigate}
         locale={locale}
         t={t}
       />
 
-      {/* Config Panel */}
-      {configOpen && (
-        <ConfigPanel
-          widgets={widgets}
-          onToggle={toggleWidget}
-          onReorder={reorderWidgets}
-          onReset={resetLayout}
-          onClose={() => setConfigOpen(false)}
-        />
-      )}
-
-      {/* Widgets in configured order — narrow widgets pair up on large screens */}
+      {/* Widgets in configured order and size */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Edit mode with nothing on the board: keep an affordance to add widgets */}
+        {editMode && !widgets.some((w) => w.visible) && (
+          <button
+            onClick={() => setGalleryOpen(true)}
+            className="lg:col-span-12 w-full flex flex-col items-center justify-center gap-2 py-14 rounded-2xl border-2 border-dashed border-accent/30 text-txt-secondary hover:border-accent/60 hover:text-accent hover:bg-accent/5 transition-all duration-200"
+          >
+            <Plus className="w-6 h-6" />
+            <span className="text-sm font-medium">{t('dashboard.addWidget')}</span>
+          </button>
+        )}
         {widgets.map((widget) => {
-          if (!widget.visible || !widgetHasContent(widget)) return null;
+          if (!widget.visible) return null;
+          if (!editMode && !widgetHasContent(widget)) return null;
           return (
-            <div key={widget.id} className={`min-w-0 ${WIDGET_SPANS[widget.type]}`}>
-              {renderWidget(widget)}
+            <div key={widget.id} className={`min-w-0 ${SIZE_SPANS[widget.size]}`}>
+              {editMode ? (
+                <WidgetChrome
+                  widget={widget}
+                  meta={WIDGET_META[widget.type]}
+                  onRemove={() => removeWidget(widget.id)}
+                  onSizeChange={(size) => setWidgetSize(widget.id, size)}
+                  onDragStart={() => setDraggedId(widget.id)}
+                  onDragOver={() =>
+                    setDragOverId(draggedId && draggedId !== widget.id ? widget.id : null)
+                  }
+                  onDrop={() => {
+                    if (draggedId && draggedId !== widget.id) {
+                      reorderWidgets(draggedId, widget.id);
+                    }
+                    clearDragState();
+                  }}
+                  onDragEnd={clearDragState}
+                  isDragging={draggedId === widget.id}
+                  isDragOver={dragOverId === widget.id && draggedId !== widget.id}
+                  t={t}
+                >
+                  {renderWidget(widget)}
+                </WidgetChrome>
+              ) : (
+                renderWidget(widget)
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* Widget gallery */}
+      {galleryOpen && (
+        <WidgetGallery
+          hidden={widgets.filter((w) => !w.visible).map((w) => WIDGET_META[w.type])}
+          onAdd={addWidget}
+          onClose={() => setGalleryOpen(false)}
+          t={t}
+        />
+      )}
+
+      {firstRunSetup}
     </div>
   );
 }
@@ -1077,12 +1109,14 @@ function TopLosersSection({
 function WatchlistTableSection({
   watchlistQuotes,
   sparklines,
+  maxItems,
   navigate,
   locale,
   t,
 }: {
   watchlistQuotes: QuoteData[];
   sparklines: Record<string, number[]>;
+  maxItems?: number;
   navigate: (path: string) => void;
   locale: 'de' | 'en';
   t: (key: string) => string;
@@ -1125,7 +1159,7 @@ function WatchlistTableSection({
               </tr>
             </thead>
             <tbody>
-              {watchlistQuotes.map((q) => {
+              {(maxItems != null ? watchlistQuotes.slice(0, maxItems) : watchlistQuotes).map((q) => {
                 const isPositive = q.regularMarketChange >= 0;
                 const sparkData = sparklines[q.symbol] || [];
                 return (
@@ -1425,11 +1459,13 @@ function PortfolioWidget({
 
 function NewsWidget({
   symbols,
+  maxItems,
   navigate,
   locale,
   t,
 }: {
   symbols: string[];
+  maxItems?: number;
   navigate: (path: string) => void;
   locale: 'de' | 'en';
   t: (key: string) => string;
@@ -1454,7 +1490,7 @@ function NewsWidget({
           const existing = seen.get(key);
           if (!existing || newsTime(item) > newsTime(existing)) seen.set(key, item);
         }
-        setItems([...seen.values()].sort((a, b) => newsTime(b) - newsTime(a)).slice(0, 5));
+        setItems([...seen.values()].sort((a, b) => newsTime(b) - newsTime(a)).slice(0, 12));
       }
     );
     return () => {
@@ -1484,7 +1520,7 @@ function NewsWidget({
         ) : items.length === 0 ? (
           <div className="p-8 text-center text-sm text-txt-secondary">{t('dashboard.noNews')}</div>
         ) : (
-          items.map((item, i) => (
+          items.slice(0, maxItems ?? 5).map((item, i) => (
             <a
               key={`${item.link}-${i}`}
               href={item.link}
@@ -1523,11 +1559,13 @@ function NewsWidget({
 
 function EarningsWidget({
   symbols,
+  maxItems,
   navigate,
   locale,
   t,
 }: {
   symbols: string[];
+  maxItems?: number;
   navigate: (path: string) => void;
   locale: 'de' | 'en';
   t: (key: string) => string;
@@ -1549,7 +1587,7 @@ function EarningsWidget({
         const upcoming = res
           .filter((e) => e.earningsDate != null && e.earningsDate * 1000 >= todayStart.getTime())
           .sort((a, b) => (a.earningsDate as number) - (b.earningsDate as number))
-          .slice(0, 5);
+          .slice(0, 8);
         setEvents(upcoming);
       })
       .catch(() => {
@@ -1597,7 +1635,7 @@ function EarningsWidget({
         ) : events.length === 0 ? (
           <div className="p-8 text-center text-sm text-txt-secondary">{t('dashboard.noEarnings')}</div>
         ) : (
-          events.map((e) => (
+          events.slice(0, maxItems ?? 5).map((e) => (
             <div
               key={e.symbol}
               className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border/5 last:border-0 hover:bg-dark-600/20 cursor-pointer transition-all duration-200"
