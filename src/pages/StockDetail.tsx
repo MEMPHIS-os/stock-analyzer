@@ -429,21 +429,25 @@ export default function StockDetail() {
   }, [range]);
 
   // Load chart data
-  const loadChart = useCallback(async () => {
-    setLoadingChart(true);
-    try {
-      const result = await fetchChart(symbol, range, chartInterval);
-      setChartData(result.quotes);
-    } catch {
-      setChartData([]);
-    } finally {
-      setLoadingChart(false);
-    }
-  }, [symbol, range, chartInterval]);
-
   useEffect(() => {
-    loadChart();
-  }, [loadChart]);
+    let cancelled = false;
+    setLoadingChart(true);
+
+    fetchChart(symbol, range, chartInterval)
+      .then((result) => {
+        if (!cancelled) setChartData(result.quotes);
+      })
+      .catch(() => {
+        if (!cancelled) setChartData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingChart(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, range, chartInterval]);
 
   // Reset comparison overlay when navigating to a different symbol.
   useEffect(() => {
@@ -532,7 +536,9 @@ export default function StockDetail() {
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) return;
 
       switch (e.key) {
         case 'f':

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, Palette, Coins, Blend } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Settings, Sun, Moon, Globe, Keyboard, RefreshCw, LayoutGrid, LayoutDashboard, Palette, Coins, Blend } from 'lucide-react';
 import { useApp, ACCENTS, type AccentColor, type GlassLevel } from '../context';
 import { SplitFlap } from './SplitFlap';
 
@@ -43,7 +44,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     setAccent,
     glassLevel,
     setGlassLevel,
+    t,
   } = useApp();
+  const navigate = useNavigate();
   const de = locale === 'de';
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -206,6 +209,34 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 ? 'Lässt das ganze Fenster (inkl. Kacheln) auf dem Desktop durchscheinen. Benötigt Windows 11.'
                 : 'Makes the whole window (tiles included) translucent over your desktop. Requires Windows 11.'}
             </p>
+          </div>
+
+          {/* Customization */}
+          <div>
+            <label className="text-[11px] text-txt-muted font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              {t('settings.customization')}
+            </label>
+            <button
+              onClick={() => {
+                onClose();
+                navigate('/?customize=1');
+              }}
+              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border/10 hover:border-accent/40 hover:bg-accent/5 transition-all duration-200 group"
+              style={{ background: 'var(--glass-bg)' }}
+            >
+              <div className="flex flex-col items-start gap-0.5 text-left">
+                <span className="text-sm font-medium text-txt-primary group-hover:text-accent transition-colors">
+                  {t('settings.customizeDashboard')}
+                </span>
+                <span className="text-[11px] text-txt-muted leading-snug">
+                  {t('settings.customizeDashboardHint')}
+                </span>
+              </div>
+              <div className="p-1.5 rounded-lg bg-accent/10 group-hover:bg-accent/20 transition-colors shrink-0">
+                <LayoutDashboard className="w-4 h-4 text-accent" />
+              </div>
+            </button>
           </div>
 
           {/* Language */}

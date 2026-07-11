@@ -75,8 +75,14 @@ export default function AlertsPanel({
 
   function describeAlert(alert: PriceAlert): string {
     if (alert.kind === 'percentChange') {
+      // targetPercent is stored as a positive magnitude; 'below' means
+      // "fell by at least X%", so display the negated threshold (see useAlerts).
       const dir = alert.condition === 'above' ? '≥' : '≤';
-      return `${de ? 'Tagesänderung' : 'daily change'} ${dir} ${alert.targetPercent}%`;
+      const threshold =
+        alert.condition === 'above'
+          ? Math.abs(alert.targetPercent ?? 0)
+          : -Math.abs(alert.targetPercent ?? 0);
+      return `${de ? 'Tagesänderung' : 'daily change'} ${dir} ${threshold}%`;
     }
     if (alert.kind === 'volumeSpike') {
       return `${de ? 'Volumen ≥' : 'volume ≥'} ${alert.targetMultiplier}× ${de ? 'Ø' : 'avg'}`;

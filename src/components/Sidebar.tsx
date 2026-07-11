@@ -310,6 +310,7 @@ export default function Sidebar() {
     watchlistGroups,
     sidebarOpen,
     setSidebarOpen,
+    activeAlerts,
     checkAlerts,
     showToast,
     t,
@@ -343,14 +344,17 @@ export default function Sidebar() {
   const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
-    if (!watchlist.length) return;
+    // Poll the union of watchlist symbols and symbols with active alerts, so
+    // alerts on symbols outside the watchlist are evaluated too.
+    const watchSymbols = watchlist.map((w) => w.symbol);
+    const symbols = [...new Set([...watchSymbols, ...activeAlerts.map((a) => a.symbol)])];
+    if (!symbols.length) return;
 
     async function loadQuotes() {
       try {
-        const symbols = watchlist.map((w) => w.symbol);
         const [data, sparks] = await Promise.all([
           fetchQuotes(symbols),
-          fetchSparklines(symbols),
+          fetchSparklines(watchSymbols),
         ]);
         const map: Record<string, QuoteData> = {};
         data.forEach((q) => {
@@ -405,7 +409,7 @@ export default function Sidebar() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [watchlist]);
+  }, [watchlist, activeAlerts, checkAlerts]);
 
   // Close sidebar on mobile when route changes
   const prevPathRef = useRef(location.pathname);

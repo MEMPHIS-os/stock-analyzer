@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -831,22 +831,24 @@ export function ForecastPanel({ symbol }: { symbol: string }) {
 
   const currency = quote?.currency || 'USD';
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
+  useEffect(() => {
+    let cancelled = false;
+    const loadData = async () => {
+      setLoading(true);
       const [chartResult, quoteResult, fundResult] = await Promise.allSettled([
         fetchChart(symbol, '1y', '1d'),
         fetchQuote(symbol),
         fetchFundamentals(symbol),
       ]);
-      if (chartResult.status === 'fulfilled') setData(chartResult.value.quotes);
-      if (quoteResult.status === 'fulfilled') setQuote(quoteResult.value);
-      if (fundResult.status === 'fulfilled') setFundamentals(fundResult.value);
-    } catch {}
-    setLoading(false);
+      if (cancelled) return;
+      setData(chartResult.status === 'fulfilled' ? chartResult.value.quotes : []);
+      setQuote(quoteResult.status === 'fulfilled' ? quoteResult.value : null);
+      setFundamentals(fundResult.status === 'fulfilled' ? fundResult.value : null);
+      setLoading(false);
+    };
+    loadData();
+    return () => { cancelled = true; };
   }, [symbol]);
-
-  useEffect(() => { loadData(); }, [loadData]);
 
   const forecast = useMemo(() => {
     if (data.length < 50 || !quote) return null;
@@ -1220,22 +1222,24 @@ export default function Forecast() {
   }, [searchQuery]);
 
   // Load data for selected symbol
-  const loadData = useCallback(async (sym: string) => {
-    setLoading(true);
-    try {
+  useEffect(() => {
+    let cancelled = false;
+    const loadData = async () => {
+      setLoading(true);
       const [chartResult, quoteResult, fundResult] = await Promise.allSettled([
-        fetchChart(sym, '1y', '1d'),
-        fetchQuote(sym),
-        fetchFundamentals(sym),
+        fetchChart(symbol, '1y', '1d'),
+        fetchQuote(symbol),
+        fetchFundamentals(symbol),
       ]);
-      if (chartResult.status === 'fulfilled') setData(chartResult.value.quotes);
-      if (quoteResult.status === 'fulfilled') setQuote(quoteResult.value);
-      if (fundResult.status === 'fulfilled') setFundamentals(fundResult.value);
-    } catch {}
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadData(symbol); }, [symbol, loadData]);
+      if (cancelled) return;
+      setData(chartResult.status === 'fulfilled' ? chartResult.value.quotes : []);
+      setQuote(quoteResult.status === 'fulfilled' ? quoteResult.value : null);
+      setFundamentals(fundResult.status === 'fulfilled' ? fundResult.value : null);
+      setLoading(false);
+    };
+    loadData();
+    return () => { cancelled = true; };
+  }, [symbol]);
 
   // Compute forecast
   const forecast = useMemo(() => {

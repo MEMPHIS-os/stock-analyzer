@@ -749,6 +749,12 @@ export default function Portfolio() {
 
   const [riskMetrics, setRiskMetrics] = useState<RiskMetrics>(INITIAL_RISK_METRICS);
 
+  // Like the value chart above, the risk analysis only re-runs when the set of
+  // holdings changes — live prices (weights) and totalValue are read through
+  // refs so the 30s quote poll doesn't refetch a year of charts per holding.
+  const totalValueRef = useRef(totalValue);
+  totalValueRef.current = totalValue;
+
   useEffect(() => {
     if (holdings.length === 0) {
       setRiskMetrics({ ...INITIAL_RISK_METRICS, loading: false });
@@ -803,7 +809,7 @@ export default function Portfolio() {
 
         // Compute weights for each holding based on current value
         const weights = holdings.map((h) => {
-          const q = quotes[h.symbol];
+          const q = quotesRef.current[h.symbol];
           const price = q?.price ?? h.avgPrice;
           return h.shares * price;
         });
@@ -906,7 +912,7 @@ export default function Portfolio() {
           setRiskMetrics({
             sharpeRatio,
             sortinoRatio,
-            maxDrawdown: maxDd * totalValue, // absolute dollar amount
+            maxDrawdown: maxDd * totalValueRef.current, // absolute dollar amount
             maxDrawdownPercent: maxDd,
             valueAtRisk: var95,
             beta,
@@ -926,7 +932,7 @@ export default function Portfolio() {
     return () => {
       cancelled = true;
     };
-  }, [holdings, symbols, quotes, totalValue]);
+  }, [holdings, symbols]);
 
   // -----------------------------------------------------------------------
   // Transaction form state
@@ -1146,7 +1152,17 @@ export default function Portfolio() {
           </button>
           {holdings.length > 0 && (
             <button
-              onClick={clearAll}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    de
+                      ? 'Wirklich ALLE Bestände und Transaktionen unwiderruflich löschen?'
+                      : 'Really delete ALL holdings and transactions permanently?',
+                  )
+                ) {
+                  clearAll();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-danger hover:bg-danger/10 transition-all duration-200 active:scale-[0.97]"
             >
               <Trash2 className="w-4 h-4" />
