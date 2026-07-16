@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Newspaper, ExternalLink, AlertCircle, Clock } from 'lucide-react';
 import { fetchNews } from '../api';
 import { formatTimeAgo } from '../formatters';
+import { useApp } from '../context';
 import type { NewsItem } from '../types';
 
 interface NewsFeedProps {
@@ -12,6 +13,7 @@ export default function NewsFeed({ symbol }: NewsFeedProps) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { locale } = useApp();
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +105,7 @@ export default function NewsFeed({ symbol }: NewsFeedProps) {
                   <span>·</span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {formatTimeAgo(featured.publishedAt)}
+                    {formatTimeAgo(featured.publishedAt, locale)}
                   </span>
                 </>
               )}
@@ -145,7 +147,7 @@ export default function NewsFeed({ symbol }: NewsFeedProps) {
                   {item.publishedAt && (
                     <>
                       <span className="text-txt-muted text-[10px]">·</span>
-                      <span className="text-[11px] text-txt-muted">{formatTimeAgo(item.publishedAt)}</span>
+                      <span className="text-[11px] text-txt-muted">{formatTimeAgo(item.publishedAt, locale)}</span>
                     </>
                   )}
                 </div>

@@ -20,7 +20,7 @@ import {
 import { usePortfolio } from '../hooks/usePortfolio';
 import { buildTransactionsCSV, parseTransactionsCSV } from '../utils/portfolioCsv';
 import { useApp } from '../context';
-import { fetchQuotes, fetchChart, searchSymbols, fetchFundamentals } from '../api';
+import { fetchQuotes, fetchChart, searchSymbols, fetchFundamentals, fetchDividends, type DividendPayment } from '../api';
 import { formatPercent, formatLargeNumber, formatPrice } from '../formatters';
 import { usePrice } from '../hooks/usePrice';
 import { Price } from '../components/Price';
@@ -327,6 +327,69 @@ function ValueChart({
 }
 
 // ---------------------------------------------------------------------------
+// Dividend schedule inference (from real payment history)
+// ---------------------------------------------------------------------------
+
+interface DividendSchedule {
+  perYear: number;   // snapped to 1 | 2 | 4 | 12
+  months: number[];  // calendar months (0-11) payments historically land in
+}
+
+// Infer payout frequency and the months payments land in, from the actual
+// dividend history. Returns null when there is no history to learn from.
+function inferDividendSchedule(payments: DividendPayment[]): DividendSchedule | null {
+  if (!payments.length) return null;
+  const sorted = [...payments].sort((a, b) => a.date - b.date);
+
+  // Frequency from the median gap between the most recent payments.
+  const recent = sorted.slice(-8);
+  const gaps: number[] = [];
+  for (let i = 1; i < recent.length; i++) {
+    gaps.push((recent[i].date - recent[i - 1].date) / 86_400);
+  }
+  let perYear = 1;
+  if (gaps.length) {
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const medGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+    if (medGap > 0) {
+      const approx = 365 / medGap;
+      perYear = [1, 2, 4, 12].reduce(
+        (best, f) => (Math.abs(f - approx) < Math.abs(best - approx) ? f : best),
+        4,
+      );
+    }
+  }
+
+  // Payment months: the distinct months of the most recent `perYear` payments.
+  const lastPayments = sorted.slice(-perYear);
+  const months = Array.from(new Set(lastPayments.map((p) => new Date(p.date * 1000).getMonth())));
+  return { perYear, months };
+}
+
+// Expand a schedule into exactly `perYear` payment months. When fewer months
+// were observed than perYear (short history), space them evenly from the
+// earliest observed month.
+function scheduleMonths(sched: DividendSchedule): number[] {
+  const { months, perYear } = sched;
+  if (months.length >= perYear) return months.slice(0, perYear);
+  const step = Math.max(1, Math.round(12 / perYear));
+  const start = months.length ? months[0] : 0;
+  const out: number[] = [];
+  for (let i = 0; i < perYear; i++) out.push((start + i * step) % 12);
+  return out;
+}
+
+function freqLabel(perYear: number, de: boolean): string {
+  switch (perYear) {
+    case 12: return de ? 'monatlich' : 'monthly';
+    case 4: return de ? 'vierteljährlich' : 'quarterly';
+    case 2: return de ? 'halbjährlich' : 'semi-annual';
+    case 1: return de ? 'jährlich' : 'annual';
+    default: return de ? `${perYear}×/Jahr` : `${perYear}×/yr`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -602,6 +665,41 @@ export default function Portfolio() {
   const benchmarkReturn = useMemo(() => (benchmarkSeries ? pctReturn(benchmarkSeries) : null), [benchmarkSeries]);
   const benchmarkLabel = BENCHMARKS.find((b) => b.key === benchKey)?.label ?? '';
 
+  // Real dividend payment history per symbol (for payout-frequency inference).
+  const [divHistory, setDivHistory] = useState<Record<string, DividendPayment[]>>({});
+
+  // Only dividend payers need a history fetch; key the effect on that set.
+  const payerSig = useMemo(
+    () =>
+      holdings
+        .filter((h) => (quotes[h.symbol]?.dividendRate ?? 0) > 0)
+        .map((h) => h.symbol)
+        .sort()
+        .join('|'),
+    [holdings, quotes],
+  );
+
+  useEffect(() => {
+    const payers = payerSig ? payerSig.split('|') : [];
+    if (payers.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        payers.map(async (s) => {
+          try {
+            return [s, await fetchDividends(s)] as const;
+          } catch {
+            return [s, [] as DividendPayment[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) setDivHistory((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payerSig]);
+
   // Dividend tracking: per-holding forward annual income (converted to the
   // display currency), yield, and yield-on-cost. Only dividend payers appear.
   const dividends = useMemo(() => {
@@ -622,13 +720,14 @@ export default function Portfolio() {
           currentYield: price > 0 ? rate / price : 0,
           yieldOnCost: h.avgPrice > 0 ? rate / h.avgPrice : 0,
           nextDate: q?.dividendDate ?? null,
+          schedule: divHistory[h.symbol] ? inferDividendSchedule(divHistory[h.symbol]) : null,
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => b.income - a.income);
     const totalIncome = rows.reduce((s, r) => s + r.income, 0);
     return { rows, totalIncome };
-  }, [holdings, quotes, convertPrice]);
+  }, [holdings, quotes, convertPrice, divHistory]);
 
   // Estimated income per calendar month (Jan–Dec). Quarterly schedule is
   // assumed (the standard for most payers); each holding's payments are
@@ -637,9 +736,17 @@ export default function Portfolio() {
   const monthlyDividends = useMemo(() => {
     const months = new Array(12).fill(0) as number[];
     for (const r of dividends.rows) {
-      const perPayment = r.income / 4;
-      const start = r.nextDate ? new Date(r.nextDate * 1000).getMonth() : 0;
-      for (let k = 0; k < 4; k++) months[(start + k * 3) % 12] += perPayment;
+      if (r.schedule && r.schedule.perYear > 0) {
+        // Real schedule: spread the annual income across the months the stock
+        // actually pays in.
+        const perPayment = r.income / r.schedule.perYear;
+        for (const m of scheduleMonths(r.schedule)) months[m] += perPayment;
+      } else {
+        // No history yet → fall back to a quarterly estimate from the next date.
+        const perPayment = r.income / 4;
+        const start = r.nextDate ? new Date(r.nextDate * 1000).getMonth() : 0;
+        for (let k = 0; k < 4; k++) months[(start + k * 3) % 12] += perPayment;
+      }
     }
     return months;
   }, [dividends.rows]);
@@ -767,10 +874,13 @@ export default function Portfolio() {
       setRiskMetrics((prev) => ({ ...prev, loading: true }));
 
       try {
-        // Fetch 1y daily chart data for all holdings + S&P 500
+        // Fetch 1y daily chart data for all holdings + S&P 500. A single failing
+        // symbol (delisted, network hiccup) must not wipe the entire risk panel,
+        // so each fetch is caught individually; holdings without usable data are
+        // dropped and the weights renormalised over the ones that remain.
         const allSymbols = [...symbols, '^GSPC'];
         const charts = await Promise.all(
-          allSymbols.map((s) => fetchChart(s, '1y', '1d')),
+          allSymbols.map((s) => fetchChart(s, '1y', '1d').catch(() => null)),
         );
 
         if (cancelled) return;
@@ -778,28 +888,45 @@ export default function Portfolio() {
         const spChart = charts[charts.length - 1]; // S&P 500
         const holdingCharts = charts.slice(0, -1);
 
-        // Build a date-indexed map of closes for each holding
-        // Use the S&P 500 dates as the reference timeline
+        // Without the S&P benchmark there is no reference timeline / beta.
+        if (!spChart || spChart.quotes.length === 0) {
+          setRiskMetrics({ ...INITIAL_RISK_METRICS, loading: false });
+          return;
+        }
+
+        // Keep only holdings whose chart actually loaded.
+        type LoadedChart = NonNullable<(typeof holdingCharts)[number]>;
+        const valid = holdings
+          .map((h, j) => ({ holding: h, chart: holdingCharts[j] }))
+          .filter(
+            (x): x is { holding: (typeof holdings)[number]; chart: LoadedChart } =>
+              x.chart != null && x.chart.quotes.length > 0,
+          );
+
+        if (valid.length === 0) {
+          setRiskMetrics({ ...INITIAL_RISK_METRICS, loading: false });
+          return;
+        }
+
+        // Use the S&P 500 dates as the reference timeline.
         const spDates = spChart.quotes.map((q) => String(q.date));
         const spCloses: Record<string, number> = {};
         for (const q of spChart.quotes) {
           spCloses[String(q.date)] = q.close;
         }
 
-        // Map holding closes by date
-        const holdingClosesByDate: Record<string, number>[] = holdingCharts.map(
-          (chart) => {
-            const map: Record<string, number> = {};
-            for (const q of chart.quotes) {
-              map[String(q.date)] = q.close;
-            }
-            return map;
-          },
-        );
+        // Map each valid holding's closes by date.
+        const holdingClosesByDate: Record<string, number>[] = valid.map(({ chart }) => {
+          const map: Record<string, number> = {};
+          for (const q of chart.quotes) {
+            map[String(q.date)] = q.close;
+          }
+          return map;
+        });
 
-        // Find common dates where all holdings + S&P have data
-        const commonDates = spDates.filter((d) =>
-          holdingClosesByDate.every((hc) => hc[d] != null) && spCloses[d] != null
+        // Find common dates where all valid holdings + S&P have data.
+        const commonDates = spDates.filter(
+          (d) => spCloses[d] != null && holdingClosesByDate.every((hc) => hc[d] != null),
         );
 
         if (commonDates.length < 2) {
@@ -807,14 +934,14 @@ export default function Portfolio() {
           return;
         }
 
-        // Compute weights for each holding based on current value
-        const weights = holdings.map((h) => {
-          const q = quotesRef.current[h.symbol];
-          const price = q?.price ?? h.avgPrice;
-          return h.shares * price;
+        // Compute weights over the valid holdings based on current value.
+        const weights = valid.map(({ holding }) => {
+          const q = quotesRef.current[holding.symbol];
+          const price = q?.price ?? holding.avgPrice;
+          return holding.shares * price;
         });
         const totalW = weights.reduce((s, w) => s + w, 0);
-        const normalizedWeights = totalW > 0 ? weights.map((w) => w / totalW) : weights.map(() => 1 / holdings.length);
+        const normalizedWeights = totalW > 0 ? weights.map((w) => w / totalW) : weights.map(() => 1 / valid.length);
 
         // Compute daily returns for portfolio and market
         const portfolioReturns: number[] = [];
@@ -826,7 +953,7 @@ export default function Portfolio() {
 
           // Weighted portfolio return
           let portReturn = 0;
-          for (let j = 0; j < holdings.length; j++) {
+          for (let j = 0; j < valid.length; j++) {
             const todayClose = holdingClosesByDate[j][today];
             const yesterdayClose = holdingClosesByDate[j][yesterday];
             if (yesterdayClose > 0) {
@@ -1845,7 +1972,11 @@ export default function Portfolio() {
                   <span className="text-[10px] text-txt-muted uppercase tracking-wider font-semibold">
                     {de ? 'Ausschüttungen pro Monat' : 'Distributions per month'}
                   </span>
-                  <span className="text-[10px] text-txt-muted italic">{de ? 'geschätzt · vierteljährlich angenommen' : 'estimated · quarterly assumed'}</span>
+                  <span className="text-[10px] text-txt-muted italic">
+                    {dividends.rows.some((r) => r.schedule)
+                      ? (de ? 'aus Ausschüttungs-Historie' : 'from payout history')
+                      : (de ? 'geschätzt' : 'estimated')}
+                  </span>
                 </div>
                 <div className="flex items-end justify-between gap-1.5 h-24">
                   {monthlyDividends.map((v, i) => (
@@ -1880,6 +2011,11 @@ export default function Portfolio() {
                   <tr key={r.symbol} className="border-b border-border/5 last:border-0 hover:bg-accent/[0.04] transition-colors duration-200">
                     <td className="px-3 py-2.5">
                       <span className="font-mono font-bold text-accent">{r.symbol}</span>
+                      {r.schedule && (
+                        <span className="ml-1.5 text-[9px] uppercase tracking-wide text-txt-muted bg-dark-600/50 rounded px-1 py-0.5 align-middle">
+                          {freqLabel(r.schedule.perYear, de)}
+                        </span>
+                      )}
                       <span className="block text-[11px] text-txt-muted truncate max-w-[160px]">{r.name}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums text-txt-secondary">

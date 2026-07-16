@@ -353,6 +353,36 @@ app.get('/api/chart/:symbol', async (req, res) => {
   }
 });
 
+// ─── Dividend history (v8 chart events - no auth needed) ───
+app.get('/api/dividends/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const cacheKey = `dividends:${symbol}`;
+  try {
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    const r = await httpsGet(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1d&events=div`
+    );
+    if (r.status !== 200) throw new Error(`Yahoo API ${r.status}`);
+    const data = JSON.parse(r.body);
+    const divs = data?.chart?.result?.[0]?.events?.dividends || {};
+    const list = (Object.values(divs) as any[])
+      .map((d) => ({ date: Number(d?.date), amount: Number(d?.amount) }))
+      .filter((d) => Number.isFinite(d.date) && Number.isFinite(d.amount) && d.amount > 0)
+      .sort((a, b) => a.date - b.date);
+
+    // Dividend history changes at most a few times a year → cache 6h.
+    setCache(cacheKey, list, 6 * 60 * 60 * 1000);
+    res.json(list);
+  } catch (error: any) {
+    console.error(`Dividends error for ${symbol}:`, error.message);
+    const stale = getStale(cacheKey);
+    if (stale) return res.json(stale);
+    res.status(500).json({ error: 'Failed to fetch dividends' });
+  }
+});
+
 // ─── Search ───
 app.get('/api/search', async (req, res) => {
   try {

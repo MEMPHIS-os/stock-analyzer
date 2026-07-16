@@ -77,9 +77,9 @@ export function QuickActionsWidget({ navigate, t }: QuickActionsWidgetProps) {
 
 // ─── MarketStatusWidget ───
 
-// Session times per exchange in local exchange time. Weekends are closed;
-// public holidays are deliberately ignored. The timezone handling follows the
-// Intl.DateTimeFormat/formatToParts pattern used by the (non-exported)
+// Session times per exchange in local exchange time. Weekends and the exchange
+// holiday calendars below are treated as closed. The timezone handling follows
+// the Intl.DateTimeFormat/formatToParts pattern used by the (non-exported)
 // helpers in src/pages/GlobalMarkets.tsx (v1.5.7).
 
 interface ExchangeSession {
@@ -150,11 +150,66 @@ const EXCHANGES: ExchangeDef[] = [
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function getZonedNow(timezone: string, now: Date): { minutes: number; weekday: number } {
+// Exchange holiday calendars (full-day closures) as exchange-local YYYY-MM-DD
+// dates. Covers 2026–2027 and should be reviewed annually. Only high-confidence
+// dates are listed: a missing entry merely degrades to "open" (the old
+// behaviour), whereas a wrong entry would falsely show "closed" — so err toward
+// omission. Half-day early closes are not modelled; some Asian lunar/variable
+// holidays are only partially covered.
+const HOLIDAYS: Record<string, Set<string>> = {
+  nyse: new Set([
+    '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25',
+    '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+    '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
+    '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
+  ]),
+  lse: new Set([
+    '2026-01-01', '2026-04-03', '2026-04-06', '2026-05-04', '2026-05-25',
+    '2026-08-31', '2026-12-25', '2026-12-28',
+    '2027-01-01', '2027-03-26', '2027-03-29', '2027-05-03', '2027-05-31',
+    '2027-08-30', '2027-12-27', '2027-12-28',
+  ]),
+  xetra: new Set([
+    '2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-24',
+    '2026-12-25', '2026-12-31',
+    '2027-01-01', '2027-03-26', '2027-03-29', '2027-12-24', '2027-12-31',
+  ]),
+  tokyo: new Set([
+    '2026-01-01', '2026-01-02', '2026-01-12', '2026-02-11', '2026-02-23',
+    '2026-03-20', '2026-04-29', '2026-05-04', '2026-05-05', '2026-05-06',
+    '2026-07-20', '2026-08-11', '2026-09-21', '2026-09-23', '2026-10-12',
+    '2026-11-03', '2026-11-23', '2026-12-31',
+    '2027-01-01', '2027-01-11', '2027-02-11', '2027-02-23', '2027-03-22',
+    '2027-04-29', '2027-05-03', '2027-05-04', '2027-05-05', '2027-07-19',
+    '2027-08-11', '2027-09-20', '2027-09-23', '2027-10-11', '2027-11-03',
+    '2027-11-23', '2027-12-31',
+  ]),
+  hongkong: new Set([
+    '2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-04-03',
+    '2026-04-06', '2026-05-01', '2026-05-25', '2026-06-19', '2026-07-01',
+    '2026-10-01', '2026-10-19', '2026-12-25',
+    '2027-01-01', '2027-02-06', '2027-02-08', '2027-02-09', '2027-03-26',
+    '2027-05-01', '2027-07-01', '2027-10-01', '2027-12-25',
+  ]),
+  sydney: new Set([
+    '2026-01-01', '2026-01-26', '2026-04-03', '2026-04-06', '2026-04-25',
+    '2026-06-08', '2026-12-25', '2026-12-28',
+    '2027-01-01', '2027-01-26', '2027-03-26', '2027-03-29', '2027-06-14',
+    '2027-12-27', '2027-12-28',
+  ]),
+};
+
+function getZonedNow(
+  timezone: string,
+  now: Date,
+): { minutes: number; weekday: number; dateKey: string } {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
       hour: 'numeric',
       minute: 'numeric',
       hour12: false,
@@ -163,17 +218,79 @@ function getZonedNow(timezone: string, now: Date): { minutes: number; weekday: n
     const hour = parseInt(get('hour'), 10) % 24;
     const minute = parseInt(get('minute'), 10);
     const weekday = WEEKDAYS.indexOf(get('weekday'));
-    return { minutes: (isNaN(hour) ? 0 : hour) * 60 + (isNaN(minute) ? 0 : minute), weekday };
+    const dateKey = `${get('year')}-${get('month')}-${get('day')}`;
+    return {
+      minutes: (isNaN(hour) ? 0 : hour) * 60 + (isNaN(minute) ? 0 : minute),
+      weekday,
+      dateKey,
+    };
   } catch {
-    return { minutes: 0, weekday: -1 };
+    return { minutes: 0, weekday: -1, dateKey: '' };
   }
 }
 
-function isExchangeOpen(def: ExchangeDef, now: Date): boolean {
-  const { minutes, weekday } = getZonedNow(def.timezone, now);
-  // Mon (1) – Fri (5) only; unknown weekday (-1) counts as closed.
-  if (weekday < 1 || weekday > 5) return false;
-  return def.sessions.some((s) => minutes >= s.openMinutes && minutes < s.closeMinutes);
+// Calendar-date math on a plain YYYY-MM-DD key (tz-independent once we already
+// hold the exchange-local date). Used to walk forward to the next trading day.
+function shiftDateKey(dateKey: string, days: number): { dateKey: string; weekday: number } {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d) + days * 86_400_000;
+  const dt = new Date(ms);
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return { dateKey: `${dt.getUTCFullYear()}-${mm}-${dd}`, weekday: dt.getUTCDay() };
+}
+
+function isTradingDay(def: ExchangeDef, weekday: number, dateKey: string): boolean {
+  if (weekday < 1 || weekday > 5) return false; // weekend / unknown (-1)
+  return !(HOLIDAYS[def.id]?.has(dateKey) ?? false);
+}
+
+export interface ExchangeStatus {
+  open: boolean;
+  /** Minutes until the next state change (close if open, next open if closed);
+   *  null when it can't be determined. */
+  minutesUntilChange: number | null;
+}
+
+export function getExchangeStatus(def: ExchangeDef, now: Date): ExchangeStatus {
+  const { minutes, weekday, dateKey } = getZonedNow(def.timezone, now);
+  if (!dateKey) return { open: false, minutesUntilChange: null };
+  const sessions = [...def.sessions].sort((a, b) => a.openMinutes - b.openMinutes);
+
+  if (isTradingDay(def, weekday, dateKey)) {
+    for (const s of sessions) {
+      if (minutes >= s.openMinutes && minutes < s.closeMinutes) {
+        return { open: true, minutesUntilChange: s.closeMinutes - minutes };
+      }
+    }
+    // Not in a session yet — does one still open later today?
+    for (const s of sessions) {
+      if (minutes < s.openMinutes) {
+        return { open: false, minutesUntilChange: s.openMinutes - minutes };
+      }
+    }
+  }
+
+  // Closed for the rest of the day: walk forward to the next trading day.
+  const minutesLeftToday = 1440 - minutes;
+  const firstOpen = sessions[0]?.openMinutes ?? 0;
+  for (let k = 1; k <= 10; k++) {
+    const { dateKey: dk, weekday: wd } = shiftDateKey(dateKey, k);
+    if (isTradingDay(def, wd, dk)) {
+      return { open: false, minutesUntilChange: minutesLeftToday + (k - 1) * 1440 + firstOpen };
+    }
+  }
+  return { open: false, minutesUntilChange: null };
+}
+
+function formatCountdown(mins: number, de: boolean): string {
+  if (mins < 60) return de ? `${mins} Min` : `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h < 24) return de ? `${h} Std ${m} Min` : `${h}h ${m}m`;
+  const d = Math.floor(h / 24);
+  const hh = h % 24;
+  return de ? `${d} Tg ${hh} Std` : `${d}d ${hh}h`;
 }
 
 function localTimeLabel(timezone: string, now: Date, locale: 'de' | 'en'): string {
@@ -212,7 +329,12 @@ export function MarketStatusWidget({ t, locale }: MarketStatusWidgetProps) {
       <div className="card p-4">
         <div className="space-y-0.5">
           {EXCHANGES.map((exchange) => {
-            const open = isExchangeOpen(exchange, now);
+            const status = getExchangeStatus(exchange, now);
+            const open = status.open;
+            const countdown =
+              status.minutesUntilChange != null
+                ? `${open ? t('dashboard.marketStatus.closesIn') : t('dashboard.marketStatus.opensIn')} ${formatCountdown(status.minutesUntilChange, locale === 'de')}`
+                : null;
             return (
               <div
                 key={exchange.id}
@@ -224,9 +346,14 @@ export function MarketStatusWidget({ t, locale }: MarketStatusWidgetProps) {
                       open ? 'bg-success animate-pulse' : 'bg-danger'
                     }`}
                   />
-                  <span className="text-sm font-medium text-txt-primary truncate">
-                    {locale === 'de' ? exchange.nameDe : exchange.nameEn}
-                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-txt-primary truncate">
+                      {locale === 'de' ? exchange.nameDe : exchange.nameEn}
+                    </div>
+                    {countdown && (
+                      <div className="text-[10px] text-txt-muted truncate">{countdown}</div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2.5 shrink-0">
                   <span className="text-xs font-mono tabular-nums text-txt-secondary">

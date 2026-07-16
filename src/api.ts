@@ -38,6 +38,16 @@ export async function fetchChart(
   return data;
 }
 
+export interface DividendPayment {
+  date: number;   // unix seconds
+  amount: number; // per-share, native currency
+}
+
+export async function fetchDividends(symbol: string): Promise<DividendPayment[]> {
+  const { data } = await api.get(`/dividends/${encodeURIComponent(symbol)}`);
+  return Array.isArray(data) ? data : [];
+}
+
 export async function searchSymbols(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
   const { data } = await api.get('/search', { params: { q: query } });

@@ -72,13 +72,22 @@ function loadAlerts(): PriceAlert[] {
     if (!stored) return [];
     const parsed = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    // Backward-compat: fill in fields added after the alert was saved.
-    return parsed.map((a: PriceAlert) => ({
-      ...a,
-      kind: a.kind ?? 'price',
-      enabled: a.enabled ?? true,
-      recurring: a.recurring ?? false,
-    }));
+    // Drop malformed entries (a null/partial entry would otherwise become a
+    // ghost alert with no symbol), then fill in fields added after it was saved.
+    return parsed
+      .filter(
+        (a: unknown): a is PriceAlert =>
+          !!a &&
+          typeof a === 'object' &&
+          typeof (a as PriceAlert).id === 'string' &&
+          typeof (a as PriceAlert).symbol === 'string',
+      )
+      .map((a: PriceAlert) => ({
+        ...a,
+        kind: a.kind ?? 'price',
+        enabled: a.enabled ?? true,
+        recurring: a.recurring ?? false,
+      }));
   } catch {
     return [];
   }

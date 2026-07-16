@@ -78,26 +78,27 @@ export function formatMarginPercent(value: number | undefined | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-export function formatDate(dateStr: string | number | Date): string {
+export function formatDate(dateStr: string | number | Date, locale: 'de' | 'en' = 'de'): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('de-DE', {
+  return date.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-US', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
 }
 
-export function formatTimeAgo(dateStr: string | number): string {
+export function formatTimeAgo(dateStr: string | number, locale: 'de' | 'en' = 'de'): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
   const diffHrs = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
+  const de = locale === 'de';
 
-  if (diffMin < 1) return 'Gerade eben';
-  if (diffMin < 60) return `Vor ${diffMin} Min.`;
-  if (diffHrs < 24) return `Vor ${diffHrs} Std.`;
-  if (diffDays < 7) return `Vor ${diffDays} Tag${diffDays > 1 ? 'en' : ''}`;
-  return formatDate(dateStr);
+  if (diffMin < 1) return de ? 'Gerade eben' : 'Just now';
+  if (diffMin < 60) return de ? `Vor ${diffMin} Min.` : `${diffMin} min ago`;
+  if (diffHrs < 24) return de ? `Vor ${diffHrs} Std.` : `${diffHrs} h ago`;
+  if (diffDays < 7) return de ? `Vor ${diffDays} Tag${diffDays > 1 ? 'en' : ''}` : `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  return formatDate(dateStr, locale);
 }

@@ -135,6 +135,8 @@ const de: Translations = {
   'dashboard.presetDesc.minimal': 'Nur das Wesentliche: Marktübersicht und Watchlist.',
   'dashboard.marketStatus.open': 'Geöffnet',
   'dashboard.marketStatus.closed': 'Geschlossen',
+  'dashboard.marketStatus.opensIn': 'öffnet in',
+  'dashboard.marketStatus.closesIn': 'schließt in',
 
   // Settings
   'settings.customization': 'Personalisierung',
@@ -508,6 +510,8 @@ const en: Translations = {
   'dashboard.presetDesc.minimal': 'Just the essentials: market overview and watchlist.',
   'dashboard.marketStatus.open': 'Open',
   'dashboard.marketStatus.closed': 'Closed',
+  'dashboard.marketStatus.opensIn': 'opens in',
+  'dashboard.marketStatus.closesIn': 'closes in',
 
   // Settings
   'settings.customization': 'Customization',

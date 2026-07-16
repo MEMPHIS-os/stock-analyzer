@@ -17,7 +17,7 @@ function newsTime(item: NewsItem): number {
 }
 
 export default function News() {
-  const { watchlist, t } = useApp();
+  const { watchlist, t, locale } = useApp();
   const [items, setItems] = useState<TaggedNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
@@ -169,7 +169,7 @@ export default function News() {
                       <span className="text-txt-muted text-[10px]">·</span>
                       <span className="text-[11px] text-txt-muted flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {formatTimeAgo(item.publishedAt)}
+                        {formatTimeAgo(item.publishedAt, locale)}
                       </span>
                     </>
                   )}
